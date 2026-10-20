@@ -1,0 +1,92 @@
+{
+  "expo": {
+    "name": "NT Albey",
+    "slug": "NTAlbey",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.jpg",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.archiid.NTAlbey",
+      "infoPlist": {
+        "NSCameraUsageDescription": "NT Albey a besoin d'accéder à votre caméra pour scanner les QR Codes.",
+        "NSPhotoLibraryUsageDescription": "NT Albey a besoin d'accéder à votre galerie pour importer des images.",
+        "NSFaceIDUsageDescription": "NT Albey utilise Face ID pour sécuriser l'accès à votre compte.",
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": false
+        }
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundImage": "./assets/transparent-bg.png"
+      },
+      "package": "com.archiid.NTAlbey",
+      "versionCode": 1,
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.READ_CONTACTS",
+        "android.permission.WRITE_CONTACTS",
+        "android.permission.USE_BIOMETRIC",
+        "android.permission.USE_FINGERPRINT"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-contacts",
+      "expo-secure-store",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "NT Albey a besoin d'accéder à votre caméra pour scanner les QR Codes."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "NT Albey a besoin d'accéder à votre galerie pour importer des images."
+        }
+      ],
+      "expo-asset",
+      "expo-sharing",
+      "expo-status-bar",
+      "expo-video",
+      "expo-audio",
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "NT Albey utilise Face ID pour sécuriser l'accès à votre compte."
+        }
+      ],
+      "@react-native-community/datetimepicker",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "91e2d990-9476-4de5-bca6-5dacda171a61"
+      }
+    },
+    "owner": "yonlirachid"
+  }
+}

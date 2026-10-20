@@ -1,0 +1,47 @@
+[
+  {
+    "id": 1,
+    "clientName": "Mme Yonli Samira Issoufou Salifou",
+    "clientPhone": "93219079",
+    "subject": "Nouvelle conversation",
+    "messages": [
+      {
+        "id": 1,
+        "from": "client",
+        "senderName": "Mme Yonli Samira Issoufou Salifou",
+        "content": "",
+        "timestamp": "2026-10-13T11:53:13.402Z",
+        "attachments": []
+      },
+      {
+        "id": 2,
+        "from": "client",
+        "senderName": "Mme Yonli Samira Issoufou Salifou",
+        "content": "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n📋  CONTEXTE DE CONVERSATION TRANSFÉRÉE\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n👤  Client        :   Mme Yonli Samira Issoufou Salifou\n📞  Téléphone     :   93219079\n📅  Date          :   13/10/2026, 12:53:12\n💬  Messages      :   4 échangés avec le bot\n\n\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n📜  HISTORIQUE COMPLET DE LA CONVERSATION\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n\n▶  🤖  Assistant   ·   12:53\n       Bonjour ! 👋 Je suis l'assistant virtuel NT Albey.\n       Comment puis-je vous aider aujourd'hui ?\n\n\n\n▶  👤  Mme Yonli Samira Issoufou Salifou   ·   12:53\n       Hey\n\n\n\n▶  🤖  Assistant   ·   12:53\n       Je n'ai pas compris votre question. 😅\n       \n       Voici quelques sujets que je peux traiter :\n       • Transfert d'argent 💰\n       • Paiement de factures 📄\n       • Gestion du compte 👤\n       • Carte Visa 💳\n       • Gouv-Pay 🏛️\n       • Boutique NT 🛍️\n       \n       Ou tapez \"aide\" pour plus d'options.\n\n\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n🎯  DEMANDE DU CLIENT\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n\nLe client souhaite maintenant parler à un conseiller humain.\n\n👉  Merci de prendre le relais dès que possible.  🙏\n\n\n▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬",
+        "timestamp": "2026-10-13T11:53:13.472Z",
+        "attachments": []
+      },
+      {
+        "id": 3,
+        "from": "agent",
+        "senderName": "Super Admin",
+        "content": "salut",
+        "timestamp": "2026-10-13T11:53:44.729Z",
+        "attachments": []
+      },
+      {
+        "id": 4,
+        "from": "client",
+        "senderName": "Mme Yonli Samira Issoufou Salifou",
+        "content": "Hi",
+        "timestamp": "2026-10-13T11:54:02.396Z",
+        "attachments": []
+      }
+    ],
+    "status": "open",
+    "agentId": null,
+    "createdAt": "2026-10-13T11:53:13.402Z",
+    "updatedAt": "2026-10-13T11:54:02.396Z",
+    "archived": false
+  }
+]

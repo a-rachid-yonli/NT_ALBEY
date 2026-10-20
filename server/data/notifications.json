@@ -1,0 +1,267 @@
+[
+  {
+    "id": "n_1791892442426_4vdkbi",
+    "userId": 7,
+    "type": "message",
+    "title": "💬 Nouveau message — Mme Yonli Samira Issoufou Salifou",
+    "message": "Hi",
+    "icon": "fa-comment-dots",
+    "color": "#f57c00",
+    "data": {
+      "conversationId": 1,
+      "messageId": 4
+    },
+    "uniqueKey": "msg-1-4-2026-10-13T11:54:02.396Z",
+    "timestamp": "2026-10-13T11:54:02.426Z",
+    "read": false
+  },
+  {
+    "id": "n_1791892442423_r7quf4",
+    "userId": 4,
+    "type": "message",
+    "title": "💬 Nouveau message — Mme Yonli Samira Issoufou Salifou",
+    "message": "Hi",
+    "icon": "fa-comment-dots",
+    "color": "#f57c00",
+    "data": {
+      "conversationId": 1,
+      "messageId": 4
+    },
+    "uniqueKey": "msg-1-4-2026-10-13T11:54:02.396Z",
+    "timestamp": "2026-10-13T11:54:02.423Z",
+    "read": false
+  },
+  {
+    "id": "n_1791892442418_7n0rf5",
+    "userId": 6,
+    "type": "message",
+    "title": "💬 Nouveau message — Mme Yonli Samira Issoufou Salifou",
+    "message": "Hi",
+    "icon": "fa-comment-dots",
+    "color": "#f57c00",
+    "data": {
+      "conversationId": 1,
+      "messageId": 4
+    },
+    "uniqueKey": "msg-1-4-2026-10-13T11:54:02.396Z",
+    "timestamp": "2026-10-13T11:54:02.418Z",
+    "read": false
+  },
+  {
+    "id": "n_1791892442415_jh1xs7",
+    "userId": 2,
+    "type": "message",
+    "title": "💬 Nouveau message — Mme Yonli Samira Issoufou Salifou",
+    "message": "Hi",
+    "icon": "fa-comment-dots",
+    "color": "#f57c00",
+    "data": {
+      "conversationId": 1,
+      "messageId": 4
+    },
+    "uniqueKey": "msg-1-4-2026-10-13T11:54:02.396Z",
+    "timestamp": "2026-10-13T11:54:02.415Z",
+    "read": false
+  },
+  {
+    "id": "n_1791892442409_ol8vva",
+    "userId": 1,
+    "type": "message",
+    "title": "💬 Nouveau message — Mme Yonli Samira Issoufou Salifou",
+    "message": "Hi",
+    "icon": "fa-comment-dots",
+    "color": "#f57c00",
+    "data": {
+      "conversationId": 1,
+      "messageId": 4
+    },
+    "uniqueKey": "msg-1-4-2026-10-13T11:54:02.396Z",
+    "timestamp": "2026-10-13T11:54:02.409Z",
+    "read": false
+  },
+  {
+    "id": "n_1791892393480_1zrftj",
+    "userId": 7,
+    "type": "message",
+    "title": "💬 Nouveau message — Mme Yonli Samira Issoufou Salifou",
+    "message": "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n📋  CONTEXTE DE CONVERSATION TRANSFÉRÉE\n━━━━━━━━━",
+    "icon": "fa-comment-dots",
+    "color": "#f57c00",
+    "data": {
+      "conversationId": 1,
+      "messageId": 2
+    },
+    "uniqueKey": "msg-1-2-2026-10-13T11:53:13.472Z",
+    "timestamp": "2026-10-13T11:53:13.480Z",
+    "read": false
+  },
+  {
+    "id": "n_1791892393478_rtv3y4",
+    "userId": 4,
+    "type": "message",
+    "title": "💬 Nouveau message — Mme Yonli Samira Issoufou Salifou",
+    "message": "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n📋  CONTEXTE DE CONVERSATION TRANSFÉRÉE\n━━━━━━━━━",
+    "icon": "fa-comment-dots",
+    "color": "#f57c00",
+    "data": {
+      "conversationId": 1,
+      "messageId": 2
+    },
+    "uniqueKey": "msg-1-2-2026-10-13T11:53:13.472Z",
+    "timestamp": "2026-10-13T11:53:13.478Z",
+    "read": false
+  },
+  {
+    "id": "n_1791892393477_bzpygd",
+    "userId": 6,
+    "type": "message",
+    "title": "💬 Nouveau message — Mme Yonli Samira Issoufou Salifou",
+    "message": "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n📋  CONTEXTE DE CONVERSATION TRANSFÉRÉE\n━━━━━━━━━",
+    "icon": "fa-comment-dots",
+    "color": "#f57c00",
+    "data": {
+      "conversationId": 1,
+      "messageId": 2
+    },
+    "uniqueKey": "msg-1-2-2026-10-13T11:53:13.472Z",
+    "timestamp": "2026-10-13T11:53:13.477Z",
+    "read": false
+  },
+  {
+    "id": "n_1791892393476_wvc4bi",
+    "userId": 2,
+    "type": "message",
+    "title": "💬 Nouveau message — Mme Yonli Samira Issoufou Salifou",
+    "message": "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n📋  CONTEXTE DE CONVERSATION TRANSFÉRÉE\n━━━━━━━━━",
+    "icon": "fa-comment-dots",
+    "color": "#f57c00",
+    "data": {
+      "conversationId": 1,
+      "messageId": 2
+    },
+    "uniqueKey": "msg-1-2-2026-10-13T11:53:13.472Z",
+    "timestamp": "2026-10-13T11:53:13.476Z",
+    "read": false
+  },
+  {
+    "id": "n_1791892393474_a4dj7u",
+    "userId": 1,
+    "type": "message",
+    "title": "💬 Nouveau message — Mme Yonli Samira Issoufou Salifou",
+    "message": "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n📋  CONTEXTE DE CONVERSATION TRANSFÉRÉE\n━━━━━━━━━",
+    "icon": "fa-comment-dots",
+    "color": "#f57c00",
+    "data": {
+      "conversationId": 1,
+      "messageId": 2
+    },
+    "uniqueKey": "msg-1-2-2026-10-13T11:53:13.472Z",
+    "timestamp": "2026-10-13T11:53:13.474Z",
+    "read": false
+  },
+  {
+    "id": "n_1791892393410_nwzcoj",
+    "userId": 7,
+    "type": "message",
+    "title": "💬 Nouveau message — Mme Yonli Samira Issoufou Salifou",
+    "message": "[Pièce jointe]",
+    "icon": "fa-comment-dots",
+    "color": "#f57c00",
+    "data": {
+      "conversationId": 1
+    },
+    "uniqueKey": "msg-1-1-2026-10-13T11:53:13.402Z",
+    "timestamp": "2026-10-13T11:53:13.410Z",
+    "read": false
+  },
+  {
+    "id": "n_1791892393409_2nxr5l",
+    "userId": 4,
+    "type": "message",
+    "title": "💬 Nouveau message — Mme Yonli Samira Issoufou Salifou",
+    "message": "[Pièce jointe]",
+    "icon": "fa-comment-dots",
+    "color": "#f57c00",
+    "data": {
+      "conversationId": 1
+    },
+    "uniqueKey": "msg-1-1-2026-10-13T11:53:13.402Z",
+    "timestamp": "2026-10-13T11:53:13.409Z",
+    "read": false
+  },
+  {
+    "id": "n_1791892393408_gd33n4",
+    "userId": 6,
+    "type": "message",
+    "title": "💬 Nouveau message — Mme Yonli Samira Issoufou Salifou",
+    "message": "[Pièce jointe]",
+    "icon": "fa-comment-dots",
+    "color": "#f57c00",
+    "data": {
+      "conversationId": 1
+    },
+    "uniqueKey": "msg-1-1-2026-10-13T11:53:13.402Z",
+    "timestamp": "2026-10-13T11:53:13.408Z",
+    "read": false
+  },
+  {
+    "id": "n_1791892393407_zga0cn",
+    "userId": 2,
+    "type": "message",
+    "title": "💬 Nouveau message — Mme Yonli Samira Issoufou Salifou",
+    "message": "[Pièce jointe]",
+    "icon": "fa-comment-dots",
+    "color": "#f57c00",
+    "data": {
+      "conversationId": 1
+    },
+    "uniqueKey": "msg-1-1-2026-10-13T11:53:13.402Z",
+    "timestamp": "2026-10-13T11:53:13.407Z",
+    "read": false
+  },
+  {
+    "id": "n_1791892393405_9gwmn9",
+    "userId": 1,
+    "type": "message",
+    "title": "💬 Nouveau message — Mme Yonli Samira Issoufou Salifou",
+    "message": "[Pièce jointe]",
+    "icon": "fa-comment-dots",
+    "color": "#f57c00",
+    "data": {
+      "conversationId": 1
+    },
+    "uniqueKey": "msg-1-1-2026-10-13T11:53:13.402Z",
+    "timestamp": "2026-10-13T11:53:13.405Z",
+    "read": false
+  },
+  {
+    "id": "n_1791280245590_ycmd9b",
+    "userId": 5,
+    "type": "ticket-assigned",
+    "title": "🛡️ Ticket #1019 vous est assigné",
+    "message": "Test depuis l'UI23",
+    "icon": "fa-user-shield",
+    "color": "#0891b2",
+    "data": {
+      "ticketId": 1019
+    },
+    "uniqueKey": "ticket-assigned-1019",
+    "timestamp": "2026-10-06T09:50:45.590Z",
+    "read": false
+  },
+  {
+    "id": "n_1791280170344_c5zydk",
+    "userId": 5,
+    "type": "ticket-assigned",
+    "title": "🛡️ Ticket #1018 vous est assigné",
+    "message": "Test depuis l'UI23",
+    "icon": "fa-user-shield",
+    "color": "#0891b2",
+    "data": {
+      "ticketId": 1018
+    },
+    "uniqueKey": "ticket-assigned-1018",
+    "timestamp": "2026-10-06T09:49:30.356Z",
+    "read": false
+  }
+]

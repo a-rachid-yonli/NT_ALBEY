@@ -1,0 +1,27 @@
+/admin/
+├── index.html              # L'unique page HTML
+├── css/
+│   └── style.css           # Styles global
+├── js/
+│   ├── app.js             # Point d'entrée, routeur
+│   ├── modules/
+│   │   ├── auth.js        # Login/Logout
+│   │   ├── dashboard.js   # Dashboard
+│   │   ├── agents.js      # Gestion agents
+│   │   ├── conversations.js # Liste conversations
+│   │   ├── conversation-detail.js # Détail
+│   │   └── statistiques.js # Stats
+│   ├── services/
+│   │   ├── api.js         # Appels API
+│   │   └── state.js       # Gestion d'état global
+│   └── components/
+│       ├── sidebar.js     # Menu latéral
+│       ├── header.js      # En-tête avec notifs
+│       ├── modal.js       # Système de modales
+│       ├── table.js       # Tableau générique
+│       └── toast.js       # Notifications
+└── assets/
+    ├── icons/
+               icon.png
+    └── images/
+                logo.png

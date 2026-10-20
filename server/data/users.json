@@ -1,0 +1,65 @@
+[
+  {
+    "id": 1,
+    "name": "Super Admin",
+    "email": "super@nt.com",
+    "password": "$2b$10$dLyWmKlcmX5p8/RAZGVgXODaK5dzrsJUoQr/LiwFRl9UkK9QBPUba",
+    "role": "super_admin",
+    "status": "active",
+    "createdAt": "2026-10-05T12:01:04.693Z"
+  },
+  {
+    "id": 2,
+    "name": "Nourhane Yonli",
+    "email": "chef@nt.com",
+    "password": "$2b$10$h1/NXOM.LbjJvArj8I8o2.NBfgVEukBxi5XIIXXvXWqIs4SgBXHbC",
+    "role": "chef",
+    "status": "active",
+    "createdAt": "2026-10-05T15:49:09.266Z"
+  },
+  {
+    "id": 3,
+    "name": "Zeynab",
+    "email": "sys@nt.com",
+    "password": "$2b$10$reb49FEmvhbRE2Gks9azw.PpE/6iXwxFCUXf6Vco1QFhyK2HYUiL2",
+    "role": "admin_systeme",
+    "status": "active",
+    "createdAt": "2026-10-05T15:50:34.636Z"
+  },
+  {
+    "id": 4,
+    "name": "Zeynab Nourhane",
+    "email": "opt@nt.com",
+    "password": "$2b$10$egOOij7QOeYJss.Hj6mU2.C/JFF.LvTbB9ak9v0SftFxeahA72VSy",
+    "role": "agent",
+    "status": "active",
+    "createdAt": "2026-10-05T15:52:23.290Z"
+  },
+  {
+    "id": 5,
+    "name": "Zeynab Ahmed",
+    "email": "sys1@nt.com",
+    "password": "$2b$10$3LYV0myVJhd/Po3vfRWeQuRGICelGjLCovoFc5eqtPJoN563M4bTu",
+    "role": "admin_systeme",
+    "status": "active",
+    "createdAt": "2026-10-05T15:54:58.858Z"
+  },
+  {
+    "id": 6,
+    "name": "service_client",
+    "email": "client@exemple.com",
+    "password": "$2b$10$hKdL2k1XgjtPFwTIh.SUCu9evo.LdzLLZ.V9WjV/9jZJkzQ55aWfy",
+    "role": "chef",
+    "status": "active",
+    "createdAt": "2026-10-06T12:04:35.553Z"
+  },
+  {
+    "id": 7,
+    "name": "operateur test",
+    "email": "test@exemple.com",
+    "password": "$2b$10$A2yKioFnO1MyEmR1SK7/FOG1Lf0oFJZrV6XRd0n2sHAO9sMFJeGS.",
+    "role": "agent",
+    "status": "active",
+    "createdAt": "2026-10-06T12:05:58.434Z"
+  }
+]

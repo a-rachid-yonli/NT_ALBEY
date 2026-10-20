@@ -1,0 +1,2084 @@
+[
+  {
+    "id": 100,
+    "action": "create_conversation",
+    "category": "conversation",
+    "severity": "info",
+    "success": true,
+    "actor": null,
+    "target": {
+      "type": "conversation",
+      "id": 1,
+      "name": "Mme Yonli Samira Issoufou Salifou"
+    },
+    "details": {
+      "subject": "Nouvelle conversation",
+      "client": "Mme Yonli Samira Issoufou Salifou"
+    },
+    "ip": "192.168.5.87",
+    "userAgent": "okhttp/4.12.0",
+    "timestamp": "2026-10-13T11:53:13.416Z"
+  },
+  {
+    "id": 99,
+    "action": "login_success",
+    "category": "auth",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 1,
+      "name": "Super Admin",
+      "email": "super@nt.com",
+      "role": "super_admin"
+    },
+    "target": null,
+    "details": {
+      "role": "super_admin"
+    },
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+    "timestamp": "2026-10-13T11:13:25.772Z"
+  },
+  {
+    "id": 98,
+    "action": "login_failed",
+    "category": "auth",
+    "severity": "warning",
+    "success": false,
+    "actor": {
+      "id": 7,
+      "name": "operateur test",
+      "email": "test@exemple.com",
+      "role": "agent"
+    },
+    "target": null,
+    "details": {
+      "reason": "Mot de passe incorrect"
+    },
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+    "timestamp": "2026-10-13T11:12:59.406Z"
+  },
+  {
+    "id": 97,
+    "action": "login_failed",
+    "category": "auth",
+    "severity": "warning",
+    "success": false,
+    "actor": {
+      "email": "agent@exemple.com"
+    },
+    "target": null,
+    "details": {
+      "reason": "Email inconnu",
+      "email": "agent@exemple.com"
+    },
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+    "timestamp": "2026-10-13T11:11:27.135Z"
+  },
+  {
+    "id": 96,
+    "action": "login_failed",
+    "category": "auth",
+    "severity": "warning",
+    "success": false,
+    "actor": {
+      "email": "admin@exemple.com"
+    },
+    "target": null,
+    "details": {
+      "reason": "Email inconnu",
+      "email": "admin@exemple.com"
+    },
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+    "timestamp": "2026-10-13T11:11:16.776Z"
+  },
+  {
+    "id": 95,
+    "action": "login_failed",
+    "category": "auth",
+    "severity": "warning",
+    "success": false,
+    "actor": {
+      "email": "admin@exemple.com"
+    },
+    "target": null,
+    "details": {
+      "reason": "Email inconnu",
+      "email": "admin@exemple.com"
+    },
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+    "timestamp": "2026-10-13T11:11:11.680Z"
+  },
+  {
+    "id": 94,
+    "action": "login_success",
+    "category": "auth",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 1,
+      "name": "Super Admin",
+      "email": "super@nt.com",
+      "role": "super_admin"
+    },
+    "target": null,
+    "details": {
+      "role": "super_admin"
+    },
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+    "timestamp": "2026-10-13T11:10:53.990Z"
+  },
+  {
+    "id": 93,
+    "action": "login_success",
+    "category": "auth",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 1,
+      "name": "Super Admin",
+      "email": "super@nt.com",
+      "role": "super_admin"
+    },
+    "target": null,
+    "details": {
+      "role": "super_admin"
+    },
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36 Edg/154.0.0.0",
+    "timestamp": "2026-10-06T13:42:26.681Z"
+  },
+  {
+    "id": 92,
+    "action": "login_failed",
+    "category": "auth",
+    "severity": "warning",
+    "success": false,
+    "actor": {
+      "email": "super@exemple.com"
+    },
+    "target": null,
+    "details": {
+      "reason": "Email inconnu",
+      "email": "super@exemple.com"
+    },
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36 Edg/154.0.0.0",
+    "timestamp": "2026-10-06T13:42:01.947Z"
+  },
+  {
+    "id": 91,
+    "action": "logout",
+    "category": "auth",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 7,
+      "name": "operateur test",
+      "email": "test@exemple.com",
+      "role": "agent"
+    },
+    "target": null,
+    "details": null,
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36 Edg/154.0.0.0",
+    "timestamp": "2026-10-06T13:41:45.248Z"
+  },
+  {
+    "id": 90,
+    "action": "login_success",
+    "category": "auth",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 7,
+      "name": "operateur test",
+      "email": "test@exemple.com",
+      "role": "agent"
+    },
+    "target": null,
+    "details": {
+      "role": "agent"
+    },
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36 Edg/154.0.0.0",
+    "timestamp": "2026-10-06T12:07:25.254Z"
+  },
+  {
+    "id": 89,
+    "action": "logout",
+    "category": "auth",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 6,
+      "name": "service_client",
+      "email": "client@exemple.com",
+      "role": "chef"
+    },
+    "target": null,
+    "details": null,
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36 Edg/154.0.0.0",
+    "timestamp": "2026-10-06T12:07:06.246Z"
+  },
+  {
+    "id": 88,
+    "action": "create_user",
+    "category": "user",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 6,
+      "name": "service_client",
+      "email": "client@exemple.com",
+      "role": "chef"
+    },
+    "target": {
+      "type": "user",
+      "id": 7,
+      "name": "operateur test",
+      "email": "test@exemple.com"
+    },
+    "details": {
+      "role": "agent",
+      "createdBy": "client@exemple.com"
+    },
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36 Edg/154.0.0.0",
+    "timestamp": "2026-10-06T12:05:58.438Z"
+  },
+  {
+    "id": 87,
+    "action": "login_success",
+    "category": "auth",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 6,
+      "name": "service_client",
+      "email": "client@exemple.com",
+      "role": "chef"
+    },
+    "target": null,
+    "details": {
+      "role": "chef"
+    },
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36 Edg/154.0.0.0",
+    "timestamp": "2026-10-06T12:05:05.935Z"
+  },
+  {
+    "id": 86,
+    "action": "logout",
+    "category": "auth",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 1,
+      "name": "Super Admin",
+      "email": "super@nt.com",
+      "role": "super_admin"
+    },
+    "target": null,
+    "details": null,
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36 Edg/154.0.0.0",
+    "timestamp": "2026-10-06T12:04:39.507Z"
+  },
+  {
+    "id": 85,
+    "action": "create_user",
+    "category": "user",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 1,
+      "name": "Super Admin",
+      "email": "super@nt.com",
+      "role": "super_admin"
+    },
+    "target": {
+      "type": "user",
+      "id": 6,
+      "name": "service_client",
+      "email": "client@exemple.com"
+    },
+    "details": {
+      "role": "chef",
+      "createdBy": "super@nt.com"
+    },
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36 Edg/154.0.0.0",
+    "timestamp": "2026-10-06T12:04:35.555Z"
+  },
+  {
+    "id": 84,
+    "action": "login_success",
+    "category": "auth",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 1,
+      "name": "Super Admin",
+      "email": "super@nt.com",
+      "role": "super_admin"
+    },
+    "target": null,
+    "details": {
+      "role": "super_admin"
+    },
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36 Edg/154.0.0.0",
+    "timestamp": "2026-10-06T12:00:59.746Z"
+  },
+  {
+    "id": 83,
+    "action": "login_success",
+    "category": "auth",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 4,
+      "name": "Zeynab Nourhane",
+      "email": "opt@nt.com",
+      "role": "agent"
+    },
+    "target": null,
+    "details": {
+      "role": "agent"
+    },
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36 Edg/154.0.0.0",
+    "timestamp": "2026-10-06T09:51:58.821Z"
+  },
+  {
+    "id": 82,
+    "action": "delete_ticket",
+    "category": "ticket",
+    "severity": "critical",
+    "success": true,
+    "actor": {
+      "id": 1,
+      "name": "Super Admin",
+      "email": "super@nt.com",
+      "role": "super_admin"
+    },
+    "target": {
+      "type": "ticket",
+      "id": 1017,
+      "name": "Test depuis l'UI"
+    },
+    "details": {
+      "deletedBy": "super@nt.com"
+    },
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36 Edg/154.0.0.0",
+    "timestamp": "2026-10-06T09:51:33.878Z"
+  },
+  {
+    "id": 81,
+    "action": "delete_ticket",
+    "category": "ticket",
+    "severity": "critical",
+    "success": true,
+    "actor": {
+      "id": 1,
+      "name": "Super Admin",
+      "email": "super@nt.com",
+      "role": "super_admin"
+    },
+    "target": {
+      "type": "ticket",
+      "id": 1018,
+      "name": "Test depuis l'UI23"
+    },
+    "details": {
+      "deletedBy": "super@nt.com"
+    },
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36 Edg/154.0.0.0",
+    "timestamp": "2026-10-06T09:51:31.342Z"
+  },
+  {
+    "id": 80,
+    "action": "delete_ticket",
+    "category": "ticket",
+    "severity": "critical",
+    "success": true,
+    "actor": {
+      "id": 1,
+      "name": "Super Admin",
+      "email": "super@nt.com",
+      "role": "super_admin"
+    },
+    "target": {
+      "type": "ticket",
+      "id": 1019,
+      "name": "Test depuis l'UI23"
+    },
+    "details": {
+      "deletedBy": "super@nt.com"
+    },
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36 Edg/154.0.0.0",
+    "timestamp": "2026-10-06T09:51:28.152Z"
+  },
+  {
+    "id": 79,
+    "action": "logout",
+    "category": "auth",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 3,
+      "name": "Zeynab",
+      "email": "sys@nt.com",
+      "role": "admin_systeme"
+    },
+    "target": null,
+    "details": null,
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36 Edg/154.0.0.0",
+    "timestamp": "2026-10-06T09:51:15.340Z"
+  },
+  {
+    "id": 78,
+    "action": "create_ticket",
+    "category": "ticket",
+    "severity": "warning",
+    "success": true,
+    "actor": {
+      "id": 3,
+      "name": "Zeynab",
+      "email": "sys@nt.com",
+      "role": "admin_systeme"
+    },
+    "target": {
+      "type": "ticket",
+      "id": 1019,
+      "name": "Test depuis l'UI23"
+    },
+    "details": {
+      "priority": "urgent",
+      "status": "in_progress",
+      "assignedTo": 5,
+      "client": "Moussa ibrahim"
+    },
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36 Edg/154.0.0.0",
+    "timestamp": "2026-10-06T09:50:45.658Z"
+  },
+  {
+    "id": 77,
+    "action": "create_ticket",
+    "category": "ticket",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 3,
+      "name": "Zeynab",
+      "email": "sys@nt.com",
+      "role": "admin_systeme"
+    },
+    "target": {
+      "type": "ticket",
+      "id": 1018,
+      "name": "Test depuis l'UI23"
+    },
+    "details": {
+      "priority": "high",
+      "status": "in_progress",
+      "assignedTo": 5,
+      "client": "Moussa ibrahim"
+    },
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36 Edg/154.0.0.0",
+    "timestamp": "2026-10-06T09:49:30.463Z"
+  },
+  {
+    "id": 76,
+    "action": "create_ticket",
+    "category": "ticket",
+    "severity": "warning",
+    "success": true,
+    "actor": {
+      "id": 3,
+      "name": "Zeynab",
+      "email": "sys@nt.com",
+      "role": "admin_systeme"
+    },
+    "target": {
+      "type": "ticket",
+      "id": 1017,
+      "name": "Test depuis l'UI"
+    },
+    "details": {
+      "priority": "urgent",
+      "status": "in_progress",
+      "assignedTo": 3,
+      "client": "Moussa ibrahim"
+    },
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36 Edg/154.0.0.0",
+    "timestamp": "2026-10-06T09:21:22.045Z"
+  },
+  {
+    "id": 75,
+    "action": "delete_ticket",
+    "category": "ticket",
+    "severity": "critical",
+    "success": true,
+    "actor": {
+      "id": 1,
+      "name": "Super Admin",
+      "email": "super@nt.com",
+      "role": "super_admin"
+    },
+    "target": {
+      "type": "ticket",
+      "id": 1015,
+      "name": "Test depuis l'UI 00"
+    },
+    "details": {
+      "deletedBy": "super@nt.com"
+    },
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36 Edg/154.0.0.0",
+    "timestamp": "2026-10-06T09:20:08.918Z"
+  },
+  {
+    "id": 74,
+    "action": "delete_ticket",
+    "category": "ticket",
+    "severity": "critical",
+    "success": true,
+    "actor": {
+      "id": 1,
+      "name": "Super Admin",
+      "email": "super@nt.com",
+      "role": "super_admin"
+    },
+    "target": {
+      "type": "ticket",
+      "id": 1016,
+      "name": "Test depuis l'UI 001"
+    },
+    "details": {
+      "deletedBy": "super@nt.com"
+    },
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36 Edg/154.0.0.0",
+    "timestamp": "2026-10-06T09:20:05.038Z"
+  },
+  {
+    "id": 73,
+    "action": "login_success",
+    "category": "auth",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 1,
+      "name": "Super Admin",
+      "email": "super@nt.com",
+      "role": "super_admin"
+    },
+    "target": null,
+    "details": {
+      "role": "super_admin"
+    },
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36 Edg/154.0.0.0",
+    "timestamp": "2026-10-06T09:19:58.195Z"
+  },
+  {
+    "id": 72,
+    "action": "create_ticket",
+    "category": "ticket",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 3,
+      "name": "Zeynab",
+      "email": "sys@nt.com",
+      "role": "admin_systeme"
+    },
+    "target": {
+      "type": "ticket",
+      "id": 1016,
+      "name": "Test depuis l'UI 001"
+    },
+    "details": {
+      "priority": "high",
+      "status": "in_progress",
+      "assignedTo": 3,
+      "client": "Moussa ibrahim"
+    },
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36 Edg/154.0.0.0",
+    "timestamp": "2026-10-06T09:11:00.828Z"
+  },
+  {
+    "id": 71,
+    "action": "create_ticket",
+    "category": "ticket",
+    "severity": "warning",
+    "success": true,
+    "actor": {
+      "id": 3,
+      "name": "Zeynab",
+      "email": "sys@nt.com",
+      "role": "admin_systeme"
+    },
+    "target": {
+      "type": "ticket",
+      "id": 1015,
+      "name": "Test depuis l'UI 00"
+    },
+    "details": {
+      "priority": "urgent",
+      "status": "in_progress",
+      "assignedTo": 3,
+      "client": "Moussa ibrahim"
+    },
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36 Edg/154.0.0.0",
+    "timestamp": "2026-10-06T09:05:18.356Z"
+  },
+  {
+    "id": 70,
+    "action": "login_success",
+    "category": "auth",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 3,
+      "name": "Zeynab",
+      "email": "sys@nt.com",
+      "role": "admin_systeme"
+    },
+    "target": null,
+    "details": {
+      "role": "admin_systeme"
+    },
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36 Edg/154.0.0.0",
+    "timestamp": "2026-10-06T09:04:11.041Z"
+  },
+  {
+    "id": 69,
+    "action": "login_success",
+    "category": "auth",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 4,
+      "name": "Zeynab Nourhane",
+      "email": "opt@nt.com",
+      "role": "agent"
+    },
+    "target": null,
+    "details": {
+      "role": "agent"
+    },
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36 Edg/154.0.0.0",
+    "timestamp": "2026-10-06T09:04:01.810Z"
+  },
+  {
+    "id": 68,
+    "action": "logout",
+    "category": "auth",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 5,
+      "name": "Zeynab Ahmed",
+      "email": "sys1@nt.com",
+      "role": "admin_systeme"
+    },
+    "target": null,
+    "details": null,
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36 Edg/154.0.0.0",
+    "timestamp": "2026-10-06T09:03:09.371Z"
+  },
+  {
+    "id": 67,
+    "action": "login_success",
+    "category": "auth",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 5,
+      "name": "Zeynab Ahmed",
+      "email": "sys1@nt.com",
+      "role": "admin_systeme"
+    },
+    "target": null,
+    "details": {
+      "role": "admin_systeme"
+    },
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36 Edg/154.0.0.0",
+    "timestamp": "2026-10-06T09:02:58.168Z"
+  },
+  {
+    "id": 66,
+    "action": "logout",
+    "category": "auth",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 3,
+      "name": "Zeynab",
+      "email": "sys@nt.com",
+      "role": "admin_systeme"
+    },
+    "target": null,
+    "details": null,
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36 Edg/154.0.0.0",
+    "timestamp": "2026-10-06T09:02:48.243Z"
+  },
+  {
+    "id": 65,
+    "action": "login_success",
+    "category": "auth",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 3,
+      "name": "Zeynab",
+      "email": "sys@nt.com",
+      "role": "admin_systeme"
+    },
+    "target": null,
+    "details": {
+      "role": "admin_systeme"
+    },
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36 Edg/154.0.0.0",
+    "timestamp": "2026-10-06T09:02:41.515Z"
+  },
+  {
+    "id": 64,
+    "action": "logout",
+    "category": "auth",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 2,
+      "name": "Nourhane Yonli",
+      "email": "chef@nt.com",
+      "role": "chef"
+    },
+    "target": null,
+    "details": null,
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36 Edg/154.0.0.0",
+    "timestamp": "2026-10-06T09:02:26.539Z"
+  },
+  {
+    "id": 63,
+    "action": "login_success",
+    "category": "auth",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 2,
+      "name": "Nourhane Yonli",
+      "email": "chef@nt.com",
+      "role": "chef"
+    },
+    "target": null,
+    "details": {
+      "role": "chef"
+    },
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36 Edg/154.0.0.0",
+    "timestamp": "2026-10-06T09:02:14.874Z"
+  },
+  {
+    "id": 62,
+    "action": "logout",
+    "category": "auth",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 4,
+      "name": "Zeynab Nourhane",
+      "email": "opt@nt.com",
+      "role": "agent"
+    },
+    "target": null,
+    "details": null,
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36 Edg/154.0.0.0",
+    "timestamp": "2026-10-06T09:02:02.510Z"
+  },
+  {
+    "id": 61,
+    "action": "login_success",
+    "category": "auth",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 4,
+      "name": "Zeynab Nourhane",
+      "email": "opt@nt.com",
+      "role": "agent"
+    },
+    "target": null,
+    "details": {
+      "role": "agent"
+    },
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36 Edg/154.0.0.0",
+    "timestamp": "2026-10-06T09:01:55.375Z"
+  },
+  {
+    "id": 60,
+    "action": "logout",
+    "category": "auth",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 1,
+      "name": "Super Admin",
+      "email": "super@nt.com",
+      "role": "super_admin"
+    },
+    "target": null,
+    "details": null,
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36 Edg/154.0.0.0",
+    "timestamp": "2026-10-06T09:01:41.932Z"
+  },
+  {
+    "id": 59,
+    "action": "login_success",
+    "category": "auth",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 1,
+      "name": "Super Admin",
+      "email": "super@nt.com",
+      "role": "super_admin"
+    },
+    "target": null,
+    "details": {
+      "role": "super_admin"
+    },
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36 Edg/154.0.0.0",
+    "timestamp": "2026-10-06T09:00:43.956Z"
+  },
+  {
+    "id": 58,
+    "action": "logout",
+    "category": "auth",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 4,
+      "name": "Zeynab Nourhane",
+      "email": "opt@nt.com",
+      "role": "agent"
+    },
+    "target": null,
+    "details": null,
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36 Edg/154.0.0.0",
+    "timestamp": "2026-10-05T19:23:34.581Z"
+  },
+  {
+    "id": 57,
+    "action": "login_success",
+    "category": "auth",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 4,
+      "name": "Zeynab Nourhane",
+      "email": "opt@nt.com",
+      "role": "agent"
+    },
+    "target": null,
+    "details": {
+      "role": "agent"
+    },
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36 Edg/154.0.0.0",
+    "timestamp": "2026-10-05T19:23:24.372Z"
+  },
+  {
+    "id": 56,
+    "action": "logout",
+    "category": "auth",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 1,
+      "name": "Super Admin",
+      "email": "super@nt.com",
+      "role": "super_admin"
+    },
+    "target": null,
+    "details": null,
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36 Edg/154.0.0.0",
+    "timestamp": "2026-10-05T19:23:09.718Z"
+  },
+  {
+    "id": 55,
+    "action": "delete_ticket",
+    "category": "ticket",
+    "severity": "critical",
+    "success": true,
+    "actor": {
+      "id": 1,
+      "name": "Super Admin",
+      "email": "super@nt.com",
+      "role": "super_admin"
+    },
+    "target": {
+      "type": "ticket",
+      "id": 1014,
+      "name": "Test depuis l'UI test"
+    },
+    "details": {
+      "deletedBy": "super@nt.com"
+    },
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36 Edg/154.0.0.0",
+    "timestamp": "2026-10-05T19:23:03.406Z"
+  },
+  {
+    "id": 54,
+    "action": "login_success",
+    "category": "auth",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 1,
+      "name": "Super Admin",
+      "email": "super@nt.com",
+      "role": "super_admin"
+    },
+    "target": null,
+    "details": {
+      "role": "super_admin"
+    },
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36 Edg/154.0.0.0",
+    "timestamp": "2026-10-05T19:22:47.290Z"
+  },
+  {
+    "id": 53,
+    "action": "logout",
+    "category": "auth",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 4,
+      "name": "Zeynab Nourhane",
+      "email": "opt@nt.com",
+      "role": "agent"
+    },
+    "target": null,
+    "details": null,
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36 Edg/154.0.0.0",
+    "timestamp": "2026-10-05T19:22:27.688Z"
+  },
+  {
+    "id": 52,
+    "action": "login_success",
+    "category": "auth",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 5,
+      "name": "Zeynab Ahmed",
+      "email": "sys1@nt.com",
+      "role": "admin_systeme"
+    },
+    "target": null,
+    "details": {
+      "role": "admin_systeme"
+    },
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+    "timestamp": "2026-10-05T19:13:09.733Z"
+  },
+  {
+    "id": 51,
+    "action": "logout",
+    "category": "auth",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 4,
+      "name": "Zeynab Nourhane",
+      "email": "opt@nt.com",
+      "role": "agent"
+    },
+    "target": null,
+    "details": null,
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+    "timestamp": "2026-10-05T19:12:54.875Z"
+  },
+  {
+    "id": 50,
+    "action": "create_ticket",
+    "category": "ticket",
+    "severity": "warning",
+    "success": true,
+    "actor": {
+      "id": 4,
+      "name": "Zeynab Nourhane",
+      "email": "opt@nt.com",
+      "role": "agent"
+    },
+    "target": {
+      "type": "ticket",
+      "id": 1014,
+      "name": "Test depuis l'UI test"
+    },
+    "details": {
+      "priority": "urgent",
+      "status": "in_progress",
+      "assignedTo": 5,
+      "client": "abdoul rachid yonli"
+    },
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+    "timestamp": "2026-10-05T19:12:51.791Z"
+  },
+  {
+    "id": 49,
+    "action": "login_success",
+    "category": "auth",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 4,
+      "name": "Zeynab Nourhane",
+      "email": "opt@nt.com",
+      "role": "agent"
+    },
+    "target": null,
+    "details": {
+      "role": "agent"
+    },
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+    "timestamp": "2026-10-05T19:12:28.572Z"
+  },
+  {
+    "id": 48,
+    "action": "logout",
+    "category": "auth",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 1,
+      "name": "Super Admin",
+      "email": "super@nt.com",
+      "role": "super_admin"
+    },
+    "target": null,
+    "details": null,
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+    "timestamp": "2026-10-05T19:12:14.450Z"
+  },
+  {
+    "id": 47,
+    "action": "login_success",
+    "category": "auth",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 1,
+      "name": "Super Admin",
+      "email": "super@nt.com",
+      "role": "super_admin"
+    },
+    "target": null,
+    "details": {
+      "role": "super_admin"
+    },
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+    "timestamp": "2026-10-05T19:12:08.807Z"
+  },
+  {
+    "id": 46,
+    "action": "logout",
+    "category": "auth",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 4,
+      "name": "Zeynab Nourhane",
+      "email": "opt@nt.com",
+      "role": "agent"
+    },
+    "target": null,
+    "details": null,
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+    "timestamp": "2026-10-05T19:11:50.867Z"
+  },
+  {
+    "id": 45,
+    "action": "login_success",
+    "category": "auth",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 4,
+      "name": "Zeynab Nourhane",
+      "email": "opt@nt.com",
+      "role": "agent"
+    },
+    "target": null,
+    "details": {
+      "role": "agent"
+    },
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+    "timestamp": "2026-10-05T19:11:41.327Z"
+  },
+  {
+    "id": 44,
+    "action": "logout",
+    "category": "auth",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 1,
+      "name": "Super Admin",
+      "email": "super@nt.com",
+      "role": "super_admin"
+    },
+    "target": null,
+    "details": null,
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+    "timestamp": "2026-10-05T19:11:24.391Z"
+  },
+  {
+    "id": 43,
+    "action": "delete_ticket",
+    "category": "ticket",
+    "severity": "critical",
+    "success": true,
+    "actor": {
+      "id": 1,
+      "name": "Super Admin",
+      "email": "super@nt.com",
+      "role": "super_admin"
+    },
+    "target": {
+      "type": "ticket",
+      "id": 1012,
+      "name": "Test depuis l'UI23"
+    },
+    "details": {
+      "deletedBy": "super@nt.com"
+    },
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+    "timestamp": "2026-10-05T19:11:19.352Z"
+  },
+  {
+    "id": 42,
+    "action": "delete_ticket",
+    "category": "ticket",
+    "severity": "critical",
+    "success": true,
+    "actor": {
+      "id": 1,
+      "name": "Super Admin",
+      "email": "super@nt.com",
+      "role": "super_admin"
+    },
+    "target": {
+      "type": "ticket",
+      "id": 1011,
+      "name": "Test depuis l'UI23"
+    },
+    "details": {
+      "deletedBy": "super@nt.com"
+    },
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+    "timestamp": "2026-10-05T19:11:15.403Z"
+  },
+  {
+    "id": 41,
+    "action": "delete_ticket",
+    "category": "ticket",
+    "severity": "critical",
+    "success": true,
+    "actor": {
+      "id": 1,
+      "name": "Super Admin",
+      "email": "super@nt.com",
+      "role": "super_admin"
+    },
+    "target": {
+      "type": "ticket",
+      "id": 1010,
+      "name": "Test depuis l'UI final"
+    },
+    "details": {
+      "deletedBy": "super@nt.com"
+    },
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+    "timestamp": "2026-10-05T19:11:11.294Z"
+  },
+  {
+    "id": 40,
+    "action": "delete_ticket",
+    "category": "ticket",
+    "severity": "critical",
+    "success": true,
+    "actor": {
+      "id": 1,
+      "name": "Super Admin",
+      "email": "super@nt.com",
+      "role": "super_admin"
+    },
+    "target": {
+      "type": "ticket",
+      "id": 1013,
+      "name": "Test depuis l'UI25"
+    },
+    "details": {
+      "deletedBy": "super@nt.com"
+    },
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+    "timestamp": "2026-10-05T19:11:06.727Z"
+  },
+  {
+    "id": 39,
+    "action": "login_success",
+    "category": "auth",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 1,
+      "name": "Super Admin",
+      "email": "super@nt.com",
+      "role": "super_admin"
+    },
+    "target": null,
+    "details": {
+      "role": "super_admin"
+    },
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+    "timestamp": "2026-10-05T19:10:58.016Z"
+  },
+  {
+    "id": 38,
+    "action": "logout",
+    "category": "auth",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 5,
+      "name": "Zeynab Ahmed",
+      "email": "sys1@nt.com",
+      "role": "admin_systeme"
+    },
+    "target": null,
+    "details": null,
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+    "timestamp": "2026-10-05T19:10:52.554Z"
+  },
+  {
+    "id": 37,
+    "action": "create_ticket",
+    "category": "ticket",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 4,
+      "name": "Zeynab Nourhane",
+      "email": "opt@nt.com",
+      "role": "agent"
+    },
+    "target": {
+      "type": "ticket",
+      "id": 1013,
+      "name": "Test depuis l'UI25"
+    },
+    "details": {
+      "priority": "medium",
+      "status": "in_progress",
+      "assignedTo": 5,
+      "client": "abdoul rachid yonli"
+    },
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36 Edg/154.0.0.0",
+    "timestamp": "2026-10-05T19:10:35.561Z"
+  },
+  {
+    "id": 36,
+    "action": "login_success",
+    "category": "auth",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 5,
+      "name": "Zeynab Ahmed",
+      "email": "sys1@nt.com",
+      "role": "admin_systeme"
+    },
+    "target": null,
+    "details": {
+      "role": "admin_systeme"
+    },
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+    "timestamp": "2026-10-05T19:07:13.939Z"
+  },
+  {
+    "id": 35,
+    "action": "login_success",
+    "category": "auth",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 5,
+      "name": "Zeynab Ahmed",
+      "email": "sys1@nt.com",
+      "role": "admin_systeme"
+    },
+    "target": null,
+    "details": {
+      "role": "admin_systeme"
+    },
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+    "timestamp": "2026-10-05T18:50:36.124Z"
+  },
+  {
+    "id": 34,
+    "action": "create_ticket",
+    "category": "ticket",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 4,
+      "name": "Zeynab Nourhane",
+      "email": "opt@nt.com",
+      "role": "agent"
+    },
+    "target": {
+      "type": "ticket",
+      "id": 1012,
+      "name": "Test depuis l'UI23"
+    },
+    "details": {
+      "priority": "medium",
+      "status": "in_progress",
+      "assignedTo": 5,
+      "client": "abdoul rachid yonli"
+    },
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36 Edg/154.0.0.0",
+    "timestamp": "2026-10-05T18:49:14.904Z"
+  },
+  {
+    "id": 33,
+    "action": "create_ticket",
+    "category": "ticket",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 4,
+      "name": "Zeynab Nourhane",
+      "email": "opt@nt.com",
+      "role": "agent"
+    },
+    "target": {
+      "type": "ticket",
+      "id": 1011,
+      "name": "Test depuis l'UI23"
+    },
+    "details": {
+      "priority": "medium",
+      "status": "in_progress",
+      "assignedTo": 5,
+      "client": "abdoul rachid yonli"
+    },
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36 Edg/154.0.0.0",
+    "timestamp": "2026-10-05T18:38:59.277Z"
+  },
+  {
+    "id": 32,
+    "action": "login_success",
+    "category": "auth",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 4,
+      "name": "Zeynab Nourhane",
+      "email": "opt@nt.com",
+      "role": "agent"
+    },
+    "target": null,
+    "details": {
+      "role": "agent"
+    },
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36 Edg/154.0.0.0",
+    "timestamp": "2026-10-05T18:38:32.783Z"
+  },
+  {
+    "id": 31,
+    "action": "login_success",
+    "category": "auth",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 5,
+      "name": "Zeynab Ahmed",
+      "email": "sys1@nt.com",
+      "role": "admin_systeme"
+    },
+    "target": null,
+    "details": {
+      "role": "admin_systeme"
+    },
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+    "timestamp": "2026-10-05T18:25:56.008Z"
+  },
+  {
+    "id": 30,
+    "action": "logout",
+    "category": "auth",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 3,
+      "name": "Zeynab",
+      "email": "sys@nt.com",
+      "role": "admin_systeme"
+    },
+    "target": null,
+    "details": null,
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+    "timestamp": "2026-10-05T18:25:50.955Z"
+  },
+  {
+    "id": 29,
+    "action": "login_success",
+    "category": "auth",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 3,
+      "name": "Zeynab",
+      "email": "sys@nt.com",
+      "role": "admin_systeme"
+    },
+    "target": null,
+    "details": {
+      "role": "admin_systeme"
+    },
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+    "timestamp": "2026-10-05T18:25:41.241Z"
+  },
+  {
+    "id": 28,
+    "action": "logout",
+    "category": "auth",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 4,
+      "name": "Zeynab Nourhane",
+      "email": "opt@nt.com",
+      "role": "agent"
+    },
+    "target": null,
+    "details": null,
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+    "timestamp": "2026-10-05T18:25:27.143Z"
+  },
+  {
+    "id": 27,
+    "action": "create_ticket",
+    "category": "ticket",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 4,
+      "name": "Zeynab Nourhane",
+      "email": "opt@nt.com",
+      "role": "agent"
+    },
+    "target": {
+      "type": "ticket",
+      "id": 1010,
+      "name": "Test depuis l'UI final"
+    },
+    "details": {
+      "priority": "high",
+      "status": "in_progress",
+      "assignedTo": 5,
+      "client": "Moussa ibrahim"
+    },
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+    "timestamp": "2026-10-05T18:25:08.943Z"
+  },
+  {
+    "id": 26,
+    "action": "login_success",
+    "category": "auth",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 4,
+      "name": "Zeynab Nourhane",
+      "email": "opt@nt.com",
+      "role": "agent"
+    },
+    "target": null,
+    "details": {
+      "role": "agent"
+    },
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+    "timestamp": "2026-10-05T18:24:20.402Z"
+  },
+  {
+    "id": 25,
+    "action": "logout",
+    "category": "auth",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 1,
+      "name": "Super Admin",
+      "email": "super@nt.com",
+      "role": "super_admin"
+    },
+    "target": null,
+    "details": null,
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+    "timestamp": "2026-10-05T18:24:05.645Z"
+  },
+  {
+    "id": 24,
+    "action": "delete_ticket",
+    "category": "ticket",
+    "severity": "critical",
+    "success": true,
+    "actor": {
+      "id": 1,
+      "name": "Super Admin",
+      "email": "super@nt.com",
+      "role": "super_admin"
+    },
+    "target": {
+      "type": "ticket",
+      "id": 1007,
+      "name": "Test depuis l'UI"
+    },
+    "details": {
+      "deletedBy": "super@nt.com"
+    },
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+    "timestamp": "2026-10-05T18:23:57.218Z"
+  },
+  {
+    "id": 23,
+    "action": "delete_ticket",
+    "category": "ticket",
+    "severity": "critical",
+    "success": true,
+    "actor": {
+      "id": 1,
+      "name": "Super Admin",
+      "email": "super@nt.com",
+      "role": "super_admin"
+    },
+    "target": {
+      "type": "ticket",
+      "id": 1008,
+      "name": "Test depuis l'UI2"
+    },
+    "details": {
+      "deletedBy": "super@nt.com"
+    },
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+    "timestamp": "2026-10-05T18:23:51.710Z"
+  },
+  {
+    "id": 22,
+    "action": "delete_ticket",
+    "category": "ticket",
+    "severity": "critical",
+    "success": true,
+    "actor": {
+      "id": 1,
+      "name": "Super Admin",
+      "email": "super@nt.com",
+      "role": "super_admin"
+    },
+    "target": {
+      "type": "ticket",
+      "id": 1009,
+      "name": "Test depuis l'UI final"
+    },
+    "details": {
+      "deletedBy": "super@nt.com"
+    },
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+    "timestamp": "2026-10-05T18:23:48.960Z"
+  },
+  {
+    "id": 21,
+    "action": "login_success",
+    "category": "auth",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 1,
+      "name": "Super Admin",
+      "email": "super@nt.com",
+      "role": "super_admin"
+    },
+    "target": null,
+    "details": {
+      "role": "super_admin"
+    },
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+    "timestamp": "2026-10-05T18:23:39.603Z"
+  },
+  {
+    "id": 20,
+    "action": "logout",
+    "category": "auth",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 4,
+      "name": "Zeynab Nourhane",
+      "email": "opt@nt.com",
+      "role": "agent"
+    },
+    "target": null,
+    "details": null,
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+    "timestamp": "2026-10-05T18:23:31.590Z"
+  },
+  {
+    "id": 19,
+    "action": "create_ticket",
+    "category": "ticket",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 4,
+      "name": "Zeynab Nourhane",
+      "email": "opt@nt.com",
+      "role": "agent"
+    },
+    "target": {
+      "type": "ticket",
+      "id": 1009,
+      "name": "Test depuis l'UI final"
+    },
+    "details": {
+      "priority": "low",
+      "status": "in_progress",
+      "assignedTo": 5,
+      "client": "Moussa ibrahim"
+    },
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+    "timestamp": "2026-10-05T18:23:09.441Z"
+  },
+  {
+    "id": 18,
+    "action": "login_success",
+    "category": "auth",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 4,
+      "name": "Zeynab Nourhane",
+      "email": "opt@nt.com",
+      "role": "agent"
+    },
+    "target": null,
+    "details": {
+      "role": "agent"
+    },
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+    "timestamp": "2026-10-05T18:22:22.712Z"
+  },
+  {
+    "id": 17,
+    "action": "login_success",
+    "category": "auth",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 4,
+      "name": "Zeynab Nourhane",
+      "email": "opt@nt.com",
+      "role": "agent"
+    },
+    "target": null,
+    "details": {
+      "role": "agent"
+    },
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+    "timestamp": "2026-10-05T18:21:24.108Z"
+  },
+  {
+    "id": 16,
+    "action": "logout",
+    "category": "auth",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 1,
+      "name": "Super Admin",
+      "email": "super@nt.com",
+      "role": "super_admin"
+    },
+    "target": null,
+    "details": null,
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+    "timestamp": "2026-10-05T18:21:06.149Z"
+  },
+  {
+    "id": 15,
+    "action": "login_success",
+    "category": "auth",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 1,
+      "name": "Super Admin",
+      "email": "super@nt.com",
+      "role": "super_admin"
+    },
+    "target": null,
+    "details": {
+      "role": "super_admin"
+    },
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+    "timestamp": "2026-10-05T18:21:04.100Z"
+  },
+  {
+    "id": 14,
+    "action": "logout",
+    "category": "auth",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 1,
+      "name": "Super Admin",
+      "email": "super@nt.com",
+      "role": "super_admin"
+    },
+    "target": null,
+    "details": null,
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+    "timestamp": "2026-10-05T18:05:34.908Z"
+  },
+  {
+    "id": 13,
+    "action": "login_success",
+    "category": "auth",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 1,
+      "name": "Super Admin",
+      "email": "super@nt.com",
+      "role": "super_admin"
+    },
+    "target": null,
+    "details": {
+      "role": "super_admin"
+    },
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+    "timestamp": "2026-10-05T16:29:13.816Z"
+  },
+  {
+    "id": 12,
+    "action": "logout",
+    "category": "auth",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 3,
+      "name": "Zeynab",
+      "email": "sys@nt.com",
+      "role": "admin_systeme"
+    },
+    "target": null,
+    "details": null,
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+    "timestamp": "2026-10-05T16:29:00.276Z"
+  },
+  {
+    "id": 11,
+    "action": "login_success",
+    "category": "auth",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 3,
+      "name": "Zeynab",
+      "email": "sys@nt.com",
+      "role": "admin_systeme"
+    },
+    "target": null,
+    "details": {
+      "role": "admin_systeme"
+    },
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+    "timestamp": "2026-10-05T16:28:52.651Z"
+  },
+  {
+    "id": 10,
+    "action": "logout",
+    "category": "auth",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 2,
+      "name": "Nourhane Yonli",
+      "email": "chef@nt.com",
+      "role": "chef"
+    },
+    "target": null,
+    "details": null,
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+    "timestamp": "2026-10-05T16:28:41.641Z"
+  },
+  {
+    "id": 9,
+    "action": "login_success",
+    "category": "auth",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 2,
+      "name": "Nourhane Yonli",
+      "email": "chef@nt.com",
+      "role": "chef"
+    },
+    "target": null,
+    "details": {
+      "role": "chef"
+    },
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+    "timestamp": "2026-10-05T16:28:38.799Z"
+  },
+  {
+    "id": 8,
+    "action": "logout",
+    "category": "auth",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 4,
+      "name": "Zeynab Nourhane",
+      "email": "opt@nt.com",
+      "role": "agent"
+    },
+    "target": null,
+    "details": null,
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+    "timestamp": "2026-10-05T16:28:22.858Z"
+  },
+  {
+    "id": 7,
+    "action": "login_success",
+    "category": "auth",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 4,
+      "name": "Zeynab Nourhane",
+      "email": "opt@nt.com",
+      "role": "agent"
+    },
+    "target": null,
+    "details": {
+      "role": "agent"
+    },
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+    "timestamp": "2026-10-05T16:28:21.018Z"
+  },
+  {
+    "id": 6,
+    "action": "logout",
+    "category": "auth",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 4,
+      "name": "Zeynab Nourhane",
+      "email": "opt@nt.com",
+      "role": "agent"
+    },
+    "target": null,
+    "details": null,
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+    "timestamp": "2026-10-05T16:28:18.328Z"
+  },
+  {
+    "id": 5,
+    "action": "create_ticket",
+    "category": "ticket",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 4,
+      "name": "Zeynab Nourhane",
+      "email": "opt@nt.com",
+      "role": "agent"
+    },
+    "target": {
+      "type": "ticket",
+      "id": 1008,
+      "name": "Test depuis l'UI2"
+    },
+    "details": {
+      "priority": "high",
+      "status": "in_progress",
+      "assignedTo": 3,
+      "client": "Moussa Test"
+    },
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+    "timestamp": "2026-10-05T16:28:16.068Z"
+  },
+  {
+    "id": 4,
+    "action": "login_success",
+    "category": "auth",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 4,
+      "name": "Zeynab Nourhane",
+      "email": "opt@nt.com",
+      "role": "agent"
+    },
+    "target": null,
+    "details": {
+      "role": "agent"
+    },
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+    "timestamp": "2026-10-05T16:27:44.686Z"
+  },
+  {
+    "id": 3,
+    "action": "logout",
+    "category": "auth",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 1,
+      "name": "Super Admin",
+      "email": "super@nt.com",
+      "role": "super_admin"
+    },
+    "target": null,
+    "details": null,
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+    "timestamp": "2026-10-05T16:27:30.780Z"
+  },
+  {
+    "id": 2,
+    "action": "login_success",
+    "category": "auth",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 1,
+      "name": "Super Admin",
+      "email": "super@nt.com",
+      "role": "super_admin"
+    },
+    "target": null,
+    "details": {
+      "role": "super_admin"
+    },
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+    "timestamp": "2026-10-05T16:26:40.364Z"
+  },
+  {
+    "id": 1,
+    "action": "logout",
+    "category": "auth",
+    "severity": "info",
+    "success": true,
+    "actor": {
+      "id": 5,
+      "name": "Zeynab Ahmed",
+      "email": "sys1@nt.com",
+      "role": "admin_systeme"
+    },
+    "target": null,
+    "details": null,
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+    "timestamp": "2026-10-05T16:26:34.737Z"
+  }
+]
