@@ -40,6 +40,7 @@ import { API } from '../services/api';
 import { pickPhoneContact } from '../utils/contactPicker';
 import RecentNumbersBar, { saveRecentNumber } from '../components/RecentNumbersBar';
 import VoiceAssistantButton from '../components/VoiceAssistantButton';
+import SuccessCheckmarkOverlay from '../components/SuccessCheckmarkOverlay';
 import { triggerSuccessHaptic } from '../utils/haptics';
 import {
   verifyTransactionAuth,
@@ -354,6 +355,21 @@ export default function ShopScreen({ navigation }) {
 
   /* ─── Modal + Auth ───────────────────────────────────────────────── */
   const [modalVisible, setModalVisible]         = useState(false);
+  const [successOverlayVisible, setSuccessOverlayVisible] = useState(false);
+  const [successOverlayData, setSuccessOverlayData] = useState({
+    title: 'Achat réussi !',
+    amount: '',
+    subtitle: '',
+  });
+
+  const triggerSuccessOverlay = ({ title, amount, subtitle }) => {
+    setSuccessOverlayData({
+      title: title || 'Achat réussi !',
+      amount: amount || '',
+      subtitle: subtitle || '',
+    });
+    setSuccessOverlayVisible(true);
+  };
   const [pin, setPin]                           = useState('');
   const [pinVisible, setPinVisible]             = useState(false);
   const [pinRequired, setPinRequired]           = useState(false);
@@ -702,6 +718,12 @@ export default function ShopScreen({ navigation }) {
         setStockAmount('');
         setUseBiometric(isBiometricAvailable);
 
+        triggerSuccessOverlay({
+          title: 'Stock rechargé !',
+          amount,
+          subtitle: 'Recharge stock NT Albey',
+        });
+
         showToast(
           'success',
           '✅ Stock rechargé',
@@ -783,6 +805,12 @@ export default function ShopScreen({ navigation }) {
         setAirtimeMode('self');
         setUseBiometric(isBiometricAvailable);
 
+        triggerSuccessOverlay({
+          title: isForOther ? 'Crédit envoyé !' : 'Crédit rechargé !',
+          amount,
+          subtitle: isForOther ? `Au +227 ${phoneNumber}` : 'Pour moi-même',
+        });
+
         showToast(
           'success',
           isForOther ? '✅ Crédit envoyé' : '✅ Crédit rechargé',
@@ -853,6 +881,12 @@ export default function ShopScreen({ navigation }) {
         setSoftphoneTargetPhone('');
         setUseBiometric(isBiometricAvailable);
 
+        triggerSuccessOverlay({
+          title: 'Softphone rechargé !',
+          amount,
+          subtitle: `Au +227 ${phoneNumber}`,
+        });
+
         showToast(
           'success',
           '✅ Softphone envoyé',
@@ -920,6 +954,12 @@ export default function ShopScreen({ navigation }) {
         setPin('');
         setSelectedProduct(null);
         setUseBiometric(isBiometricAvailable);
+
+        triggerSuccessOverlay({
+          title: 'Abonnement BLR renouvelé !',
+          amount: price,
+          subtitle: `Ligne ${blrCode}`,
+        });
 
         try {
           const fresh = await API.checkBLR(blrCode);
@@ -1989,6 +2029,15 @@ export default function ShopScreen({ navigation }) {
           </Animated.View>
         </View>
       </Modal>
+
+      {/* ═══════════ OVERLAY VALIDATION ANIMÉE & CHIME ═══════════ */}
+      <SuccessCheckmarkOverlay
+        visible={successOverlayVisible}
+        title={successOverlayData.title}
+        amount={successOverlayData.amount}
+        subtitle={successOverlayData.subtitle}
+        onDismiss={() => setSuccessOverlayVisible(false)}
+      />
 
     </KeyboardAvoidingView>
   );

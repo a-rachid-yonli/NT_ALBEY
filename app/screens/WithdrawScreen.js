@@ -39,6 +39,7 @@ import { getLogoBase64 } from '../utils/pdfUtils';
 import { useTransactions } from '../context/TransactionContext';
 import { saveTxMetadata } from '../utils/txRefCache';
 import VoiceAssistantButton from '../components/VoiceAssistantButton';
+import SuccessCheckmarkOverlay from '../components/SuccessCheckmarkOverlay';
 import {
   verifyTransactionAuth,
   AUTH_METHOD,
@@ -223,6 +224,7 @@ export default function WithdrawScreen({ navigation }) {
 
   // ─── Reçu ──────────────────────────────────────────────
   const [receiptModalVisible, setReceiptModalVisible] = useState(false);
+  const [successOverlayVisible, setSuccessOverlayVisible] = useState(false);
   const [transactionDetails, setTransactionDetails] = useState(null);
   const [isExporting, setIsExporting] = useState(false);
 
@@ -533,7 +535,7 @@ export default function WithdrawScreen({ navigation }) {
       } catch (_) {}
 
       setPin('');
-      setReceiptModalVisible(true);
+      setSuccessOverlayVisible(true);
 
       if (typeof refreshWallet === 'function') {
         await refreshWallet();
@@ -1470,6 +1472,22 @@ ${details.feesIncluded ? '✅ Frais inclus' : '❌ Hors frais'}
           </Animated.View>
         </View>
       </Modal>
+
+      {/* ═══════════ OVERLAY VALIDATION ANIMÉE & CHIME ═══════════ */}
+      <SuccessCheckmarkOverlay
+        visible={successOverlayVisible}
+        title="Retrait initié !"
+        amount={transactionDetails?.amount || numericAmount}
+        subtitle={
+          selectedDepartement?.designation
+            ? `Guichet de ${selectedDepartement.designation}`
+            : 'Envoi à moi-même'
+        }
+        onDismiss={() => {
+          setSuccessOverlayVisible(false);
+          setReceiptModalVisible(true);
+        }}
+      />
 
       {/* ═══════════════════════════════════════════════════
           MODAL REÇU

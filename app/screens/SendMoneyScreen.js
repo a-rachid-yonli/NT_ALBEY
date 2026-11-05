@@ -25,6 +25,7 @@ import { TranslatedText as Text, TranslatedTextInput as TextInput, TranslatedAle
 import { humanizeError } from '../utils/errorHandler';
 import RecentNumbersBar, { saveRecentNumber } from '../components/RecentNumbersBar';
 import VoiceAssistantButton from '../components/VoiceAssistantButton';
+import SuccessCheckmarkOverlay from '../components/SuccessCheckmarkOverlay';
 import { useRoute } from '@react-navigation/native';
 import Svg, { Path, Circle, Rect } from 'react-native-svg';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -370,6 +371,7 @@ export default function SendMoneyScreen({ navigation }) {
 
   // ─── Reçu ──────────────────────────────────────────────
   const [receiptModalVisible, setReceiptModalVisible] = useState(false);
+  const [successOverlayVisible, setSuccessOverlayVisible] = useState(false);
   const [transactionDetails, setTransactionDetails] = useState(null);
   const [isExporting, setIsExporting] = useState(false);
 
@@ -1211,7 +1213,7 @@ export default function SendMoneyScreen({ navigation }) {
         }
       } catch (_) {}
 
-      setReceiptModalVisible(true);
+      setSuccessOverlayVisible(true);
       if (typeof refreshWallet === 'function') await refreshWallet();
     } catch (error) {
       showToast('error', 'Échec du transfert', error.message || 'Impossible d\'effectuer le transfert.');
@@ -2087,6 +2089,24 @@ export default function SendMoneyScreen({ navigation }) {
           )}
         </View>
       </Modal>
+
+      {/* ═══════════ OVERLAY VALIDATION ANIMÉE & CHIME ═══════════ */}
+      <SuccessCheckmarkOverlay
+        visible={successOverlayVisible}
+        title="Transfert réussi !"
+        amount={transactionDetails?.amount || numericAmount}
+        subtitle={
+          selectedContact?.name
+            ? `Envoyé à ${selectedContact.name}`
+            : selectedContact?.phone
+            ? `Envoyé au ${selectedContact.phone}`
+            : 'Transfert de compte à compte'
+        }
+        onDismiss={() => {
+          setSuccessOverlayVisible(false);
+          setReceiptModalVisible(true);
+        }}
+      />
 
       {/* ═══════════ MODAL REÇU ═══════════ */}
       <Modal

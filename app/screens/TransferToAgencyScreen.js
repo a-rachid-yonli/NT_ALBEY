@@ -42,6 +42,7 @@ import { saveTxMetadata } from '../utils/txRefCache';
 import { pickPhoneContact } from '../utils/contactPicker';
 import RecentNumbersBar, { saveRecentNumber } from '../components/RecentNumbersBar';
 import VoiceAssistantButton from '../components/VoiceAssistantButton';
+import SuccessCheckmarkOverlay from '../components/SuccessCheckmarkOverlay';
 import { verifyTransactionAuth, AUTH_METHOD, AUTH_CANCELLED } from '../utils/transactionAuth';
 import { isValidPin } from '../utils/validators';
 
@@ -253,6 +254,7 @@ export default function TransferToAgencyScreen({ navigation }) {
 
   // ─── Reçu ──────────────────────────────────────────────
   const [receiptModalVisible, setReceiptModalVisible] = useState(false);
+  const [successOverlayVisible, setSuccessOverlayVisible] = useState(false);
   const [transactionDetails, setTransactionDetails] = useState(null);
   const [isExporting, setIsExporting] = useState(false);
 
@@ -596,7 +598,7 @@ export default function TransferToAgencyScreen({ navigation }) {
       } catch (_) {}
 
       setPin('');
-      setReceiptModalVisible(true);
+      setSuccessOverlayVisible(true);
 
       if (typeof refreshWallet === 'function') {
         await refreshWallet();
@@ -1585,6 +1587,24 @@ ${details.feesIncluded ? '✅ Frais inclus' : '❌ Hors frais'}
           </Animated.View>
         </View>
       </Modal>
+
+      {/* ═══════════ OVERLAY VALIDATION ANIMÉE & CHIME ═══════════ */}
+      <SuccessCheckmarkOverlay
+        visible={successOverlayVisible}
+        title="Transfert réussi !"
+        amount={transactionDetails?.amount || numericAmount}
+        subtitle={
+          beneficiaryName
+            ? `Pour ${beneficiaryName}${selectedDepartement?.designation ? ` (${selectedDepartement.designation})` : ''}`
+            : phoneNumber
+            ? `Pour ${phoneNumber}`
+            : 'Transfert pour retrait au guichet'
+        }
+        onDismiss={() => {
+          setSuccessOverlayVisible(false);
+          setReceiptModalVisible(true);
+        }}
+      />
 
       {/* MODAL REÇU */}
       <Modal
