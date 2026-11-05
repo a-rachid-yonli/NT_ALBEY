@@ -3,8 +3,9 @@
 //    - Sélection rapide en 1-clic
 //    - Bulles d'avatars avec initiales stylisées
 //    - Indicateur visuel d'opérateur GSM nigérien (vert NT, rouge Airtel, jaune Zamani, bleu Moov)
+//    - Suppression un par un des contacts (Appui long ou mode "Gérer")
 import React, { useState, useEffect, useCallback } from 'react';
-import { StyleSheet, ScrollView } from 'react-native';
+import { StyleSheet, ScrollView, Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   TranslatedText as Text,
@@ -15,6 +16,7 @@ import { triggerSelectionHaptic } from '../utils/haptics';
 import { detectNigerOperator, normalizeNigerPhone } from '../utils/operatorDetector';
 
 const RECENT_NUMBERS_KEY = '@ntalbey_recent_numbers_v1';
+const HIDDEN_RECENTS_KEY = '@ntalbey_hidden_recents_v1';
 const MAX_RECENTS = 6;
 
 function formatDisplayPhone(digits8 = '') {
@@ -48,6 +50,32 @@ function getFirstName(name = '', phone = '') {
   return cleanPhone ? `${cleanPhone.slice(0, 2)} ${cleanPhone.slice(2, 4)}…` : 'Bénéficiaire';
 }
 
+/**
+ * Supprime un numéro spécifique de la liste des récents / favoris.
+ */
+export async function deleteRecentNumber(phone) {
+  try {
+    const clean = normalizeNigerPhone(phone);
+    if (!clean || clean.length !== 8) return;
+
+    // 1. Retirer des numéros enregistrés
+    const raw = await AsyncStorage.getItem(RECENT_NUMBERS_KEY);
+    const list = raw ? JSON.parse(raw) : [];
+    const filtered = Array.isArray(list)
+      ? list.filter((item) => item && normalizeNigerPhone(item.phone) !== clean)
+      : [];
+    await AsyncStorage.setItem(RECENT_NUMBERS_KEY, JSON.stringify(filtered));
+
+    // 2. Ajouter à la liste des masqués (pour ne pas réapparaître via les transactions)
+    const rawHidden = await AsyncStorage.getItem(HIDDEN_RECENTS_KEY);
+    const hidden = rawHidden ? JSON.parse(rawHidden) : [];
+    if (!hidden.includes(clean)) {
+      hidden.push(clean);
+      await AsyncStorage.setItem(HIDDEN_RECENTS_KEY, JSON.stringify(hidden));
+    }
+  } catch (_) {}
+}
+
 export async function saveRecentNumber(phone, label = '') {
   try {
     const clean = normalizeNigerPhone(phone);
@@ -62,6 +90,14 @@ export async function saveRecentNumber(phone, label = '') {
       ...filtered,
     ].slice(0, MAX_RECENTS);
     await AsyncStorage.setItem(RECENT_NUMBERS_KEY, JSON.stringify(updated));
+
+    // Si le numéro avait été supprimé précédemment, on le réhabilite
+    const rawHidden = await AsyncStorage.getItem(HIDDEN_RECENTS_KEY);
+    const hidden = rawHidden ? JSON.parse(rawHidden) : [];
+    if (hidden.includes(clean)) {
+      const nextHidden = hidden.filter((p) => p !== clean);
+      await AsyncStorage.setItem(HIDDEN_RECENTS_KEY, JSON.stringify(nextHidden));
+    }
   } catch (_) {}
 }
 
@@ -72,9 +108,14 @@ export default function RecentNumbersBar({
   transactions = [],
 }) {
   const [recents, setRecents] = useState([]);
+  const [isManaging, setIsManaging] = useState(false);
 
   const loadRecents = useCallback(async () => {
     try {
+      const rawHidden = await AsyncStorage.getItem(HIDDEN_RECENTS_KEY);
+      const hiddenList = rawHidden ? JSON.parse(rawHidden) : [];
+      const hiddenSet = new Set(Array.isArray(hiddenList) ? hiddenList : []);
+
       const raw = await AsyncStorage.getItem(RECENT_NUMBERS_KEY);
       const saved = raw ? JSON.parse(raw) : [];
       const map = new Map();
@@ -82,7 +123,7 @@ export default function RecentNumbersBar({
       if (Array.isArray(saved)) {
         for (const item of saved) {
           const clean = normalizeNigerPhone(item?.phone);
-          if (clean && clean.length === 8) {
+          if (clean && clean.length === 8 && !hiddenSet.has(clean)) {
             map.set(clean, { phone: clean, label: item?.label || '' });
           }
         }
@@ -98,7 +139,7 @@ export default function RecentNumbersBar({
             tx?.phone ||
             '';
           const clean = normalizeNigerPhone(candidate);
-          if (clean && clean.length === 8 && !map.has(clean)) {
+          if (clean && clean.length === 8 && !map.has(clean) && !hiddenSet.has(clean)) {
             map.set(clean, {
               phone: clean,
               label: tx?.recipient_name || tx?.beneficiary_name || '',
@@ -127,12 +168,63 @@ export default function RecentNumbersBar({
 
   const cleanCurrent = normalizeNigerPhone(currentValue);
 
+  const handleDeleteContact = (item) => {
+    try {
+      if (typeof triggerSelectionHaptic === 'function') triggerSelectionHaptic();
+    } catch (_) {}
+
+    const contactName = getFirstName(item.label, item.phone);
+    const displayPhone = formatDisplayPhone(item.phone);
+
+    Alert.alert(
+      'Supprimer ce contact',
+      `Voulez-vous retirer ${contactName} (${displayPhone}) de la liste d'envoi rapide ?`,
+      [
+        { text: 'Annuler', style: 'cancel' },
+        {
+          text: 'Supprimer',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              if (typeof triggerSelectionHaptic === 'function') triggerSelectionHaptic();
+            } catch (_) {}
+            await deleteRecentNumber(item.phone);
+            setRecents((prev) => {
+              const updated = prev.filter((r) => r.phone !== item.phone);
+              if (updated.length === 0) setIsManaging(false);
+              return updated;
+            });
+          },
+        },
+      ]
+    );
+  };
+
   return (
     <View style={styles.container}>
       <View style={styles.headerRow}>
-        <Text style={styles.headerTitle}>⚡ Envoi rapide (1-clic)</Text>
-        <Text style={styles.headerSubtitle}>Récents</Text>
+        <View style={styles.headerTitleWrap}>
+          <Text style={styles.headerTitle}>⚡ Envoi rapide (1-clic)</Text>
+          <Text style={styles.headerSubtitle}>• Récents</Text>
+        </View>
+
+        <TouchableOpacity
+          onPress={() => {
+            try {
+              if (typeof triggerSelectionHaptic === 'function') triggerSelectionHaptic();
+            } catch (_) {}
+            setIsManaging((v) => !v);
+          }}
+          style={[styles.manageBtn, isManaging && styles.manageBtnActive]}
+          activeOpacity={0.7}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Text style={[styles.manageBtnText, isManaging && styles.manageBtnTextActive]}>
+            {isManaging ? 'Terminer' : 'Gérer'}
+          </Text>
+        </TouchableOpacity>
       </View>
+
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -150,6 +242,10 @@ export default function RecentNumbersBar({
               key={item.phone}
               style={styles.bubbleItem}
               onPress={() => {
+                if (isManaging) {
+                  handleDeleteContact(item);
+                  return;
+                }
                 try {
                   if (typeof triggerSelectionHaptic === 'function') triggerSelectionHaptic();
                 } catch (_) {}
@@ -157,7 +253,9 @@ export default function RecentNumbersBar({
                   onSelectNumber(item.phone, item.label);
                 }
               }}
+              onLongPress={() => handleDeleteContact(item)}
               activeOpacity={0.7}
+              delayLongPress={400}
             >
               <View
                 style={[
@@ -166,6 +264,18 @@ export default function RecentNumbersBar({
                   { backgroundColor: operator?.bgColor || '#F1F5F9' },
                 ]}
               >
+                {/* Badge de suppression "✕" individuel */}
+                {isManaging && (
+                  <TouchableOpacity
+                    style={styles.deleteBadge}
+                    onPress={() => handleDeleteContact(item)}
+                    activeOpacity={0.8}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Text style={styles.deleteBadgeText}>✕</Text>
+                  </TouchableOpacity>
+                )}
+
                 <Text
                   style={[
                     styles.avatarInitials,
@@ -174,6 +284,7 @@ export default function RecentNumbersBar({
                 >
                   {initials}
                 </Text>
+
                 {operator && (
                   <View
                     style={[
@@ -183,12 +294,14 @@ export default function RecentNumbersBar({
                   />
                 )}
               </View>
+
               <Text
                 style={[styles.bubbleName, isSelected && styles.bubbleNameSelected]}
                 numberOfLines={1}
               >
                 {firstName}
               </Text>
+
               <Text style={styles.bubblePhoneShort} numberOfLines={1}>
                 {item.phone.slice(0, 2)} {item.phone.slice(2, 4)}…
               </Text>
@@ -212,6 +325,11 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     paddingHorizontal: 2,
   },
+  headerTitleWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
   headerTitle: {
     fontSize: 12,
     fontWeight: '800',
@@ -223,6 +341,24 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#64748B',
   },
+  manageBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    backgroundColor: '#F1F5F9',
+  },
+  manageBtnActive: {
+    backgroundColor: '#FEE2E2',
+  },
+  manageBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#008933',
+  },
+  manageBtnTextActive: {
+    color: '#DC2626',
+    fontWeight: '800',
+  },
   scrollContent: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -233,6 +369,7 @@ const styles = StyleSheet.create({
   bubbleItem: {
     alignItems: 'center',
     width: 62,
+    position: 'relative',
   },
   avatarWrapper: {
     width: 50,
@@ -253,6 +390,32 @@ const styles = StyleSheet.create({
     borderColor: '#008933',
     borderWidth: 2.5,
     transform: [{ scale: 1.05 }],
+  },
+  deleteBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#EF4444',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: '#FFFFFF',
+    zIndex: 10,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.25,
+    shadowRadius: 2,
+  },
+  deleteBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '900',
+    lineHeight: 11,
+    textAlign: 'center',
   },
   avatarInitials: {
     fontSize: 16,
