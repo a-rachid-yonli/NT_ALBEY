@@ -382,7 +382,7 @@ export default function SendMoneyScreen({ navigation }) {
   const beneficiaryPulse = useRef(new Animated.Value(1)).current;
   const beneficiaryPulseLoop = useRef(null);
 
-  const { balance, refreshWallet } = useTransactions();
+  const { balance, refreshWallet, transactions = [] } = useTransactions();
 
   const effectiveW = qrContainerSize.width > 0 ? qrContainerSize.width : width;
   const effectiveH = qrContainerSize.height > 0 ? qrContainerSize.height : height;
