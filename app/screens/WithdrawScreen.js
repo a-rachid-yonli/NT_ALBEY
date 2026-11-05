@@ -38,6 +38,7 @@ import { API } from '../services/api';
 import { getLogoBase64 } from '../utils/pdfUtils';
 import { useTransactions } from '../context/TransactionContext';
 import { saveTxMetadata } from '../utils/txRefCache';
+import VoiceAssistantButton from '../components/VoiceAssistantButton';
 import {
   verifyTransactionAuth,
   AUTH_METHOD,
@@ -1312,6 +1313,12 @@ ${details.feesIncluded ? '✅ Frais inclus' : '❌ Hors frais'}
               <Text style={styles.confirmRecipient}>
                 Région : {selectedDepartement?.designation || '—'}
               </Text>
+
+              <VoiceAssistantButton
+                type="withdraw"
+                amount={numericAmount}
+                recipientName={selectedDepartement?.designation || 'Guichet Niger Telecoms'}
+              />
 
               {/* Section FRAIS */}
               <View style={styles.feesSection}>

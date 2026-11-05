@@ -41,6 +41,7 @@ import { useTransactions } from '../context/TransactionContext';
 import { saveTxMetadata } from '../utils/txRefCache';
 import { pickPhoneContact } from '../utils/contactPicker';
 import RecentNumbersBar, { saveRecentNumber } from '../components/RecentNumbersBar';
+import VoiceAssistantButton from '../components/VoiceAssistantButton';
 import { verifyTransactionAuth, AUTH_METHOD, AUTH_CANCELLED } from '../utils/transactionAuth';
 import { isValidPin } from '../utils/validators';
 
@@ -1398,6 +1399,13 @@ ${details.feesIncluded ? '✅ Frais inclus' : '❌ Hors frais'}
               <Text style={styles.confirmRecipient}>
                 à {beneficiaryName}
               </Text>
+
+              <VoiceAssistantButton
+                type="transfer_agency"
+                amount={numericAmount}
+                recipientName={beneficiaryName || ''}
+                recipientPhone={beneficiaryPhone || ''}
+              />
 
               {/* FRAIS */}
               <View style={styles.feesSection}>

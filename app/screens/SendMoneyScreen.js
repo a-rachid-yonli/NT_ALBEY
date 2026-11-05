@@ -24,6 +24,7 @@ import {
 import { TranslatedText as Text, TranslatedTextInput as TextInput, TranslatedAlert as Alert, ThemedView as View, ThemedTouchableOpacity as TouchableOpacity, ThemedScrollView as ScrollView, ThemedKeyboardAvoidingView as KeyboardAvoidingView } from '../context/LanguageContext';
 import { humanizeError } from '../utils/errorHandler';
 import RecentNumbersBar, { saveRecentNumber } from '../components/RecentNumbersBar';
+import VoiceAssistantButton from '../components/VoiceAssistantButton';
 import { useRoute } from '@react-navigation/native';
 import Svg, { Path, Circle, Rect } from 'react-native-svg';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -1668,6 +1669,16 @@ export default function SendMoneyScreen({ navigation }) {
           </Text>
         )}
 
+        {canSend && !pinRequired && (
+          <VoiceAssistantButton
+            type="transfer_p2p"
+            amount={numericAmount}
+            recipientName={selectedContact?.name || ''}
+            recipientPhone={selectedContact?.phone || ''}
+            containerStyle={{ marginTop: 18 }}
+          />
+        )}
+
         {pinRequired && (
           <View style={styles.pinInline}>
             {pinLockout.isLocked ? (
@@ -1693,6 +1704,14 @@ export default function SendMoneyScreen({ navigation }) {
               </View>
             ) : (
               <>
+                <VoiceAssistantButton
+                  type="transfer_p2p"
+                  amount={numericAmount}
+                  recipientName={selectedContact?.name || ''}
+                  recipientPhone={selectedContact?.phone || ''}
+                  containerStyle={{ marginBottom: 12, marginTop: 0 }}
+                />
+
                 <View style={styles.pinInlineHeader}>
                   <Text style={styles.pinInlineLabel}>Confirmez avec votre mot de passe</Text>
                   <Text style={styles.pinInlineCounter}>{pin.length}/20</Text>
