@@ -73,6 +73,115 @@ export function numberToHaoussaWords(num) {
 }
 
 /**
+ * Convertit un nombre à deux chiffres (0-99) en mots en français.
+ * Idéal pour prononcer un numéro de téléphone par paires.
+ */
+export function twoDigitsToFrenchWords(pairStr) {
+  const str = String(pairStr).trim();
+  if (!str) return '';
+
+  if (str.length === 2 && str.startsWith('0')) {
+    const digitWords = ['zéro', 'un', 'deux', 'trois', 'quatre', 'cinq', 'six', 'sept', 'huit', 'neuf'];
+    const second = parseInt(str[1], 10);
+    return `zéro ${digitWords[second] || second}`;
+  }
+
+  const num = parseInt(str, 10);
+  if (isNaN(num)) return str;
+
+  const units = [
+    'zéro', 'un', 'deux', 'trois', 'quatre', 'cinq', 'six', 'sept', 'huit', 'neuf',
+    'dix', 'onze', 'douze', 'treize', 'quatorze', 'quinze', 'seize',
+    'dix-sept', 'dix-huit', 'dix-neuf'
+  ];
+
+  if (num < 20) return units[num];
+
+  const tens = {
+    20: 'vingt',
+    30: 'trente',
+    40: 'quarante',
+    50: 'cinquante',
+    60: 'soixante',
+  };
+
+  if (num >= 20 && num < 70) {
+    const t = Math.floor(num / 10) * 10;
+    const u = num % 10;
+    if (u === 0) return tens[t];
+    if (u === 1) return `${tens[t]}-et-un`;
+    return `${tens[t]}-${units[u]}`;
+  }
+
+  if (num >= 70 && num < 80) {
+    const rem = num - 60; // 10 to 19
+    if (rem === 11) return 'soixante-et-onze';
+    return `soixante-${twoDigitsToFrenchWords(String(rem))}`;
+  }
+
+  if (num >= 80 && num < 90) {
+    const u = num % 10;
+    if (u === 0) return 'quatre-vingts';
+    return `quatre-vingt-${units[u]}`;
+  }
+
+  if (num >= 90 && num < 100) {
+    const rem = num - 80; // 10 to 19
+    return `quatre-vingt-${twoDigitsToFrenchWords(String(rem))}`;
+  }
+
+  return String(num);
+}
+
+/**
+ * Convertit une paire de chiffres en mots en Haoussa.
+ */
+export function twoDigitsToHaoussaWords(pairStr) {
+  const str = String(pairStr).trim();
+  if (!str) return '';
+
+  if (str.length === 2 && str.startsWith('0')) {
+    const units = ['sifili', 'daya', 'biyu', 'uku', 'hudu', 'biyar', 'shida', 'bakwai', 'takwas', 'tara'];
+    const second = parseInt(str[1], 10);
+    return `sifili ${units[second] || second}`;
+  }
+
+  const num = parseInt(str, 10);
+  if (isNaN(num)) return str;
+  return numberToHaoussaWords(num);
+}
+
+/**
+ * Formate un numéro de téléphone de 8 chiffres par paires de mots
+ * Ex: 97816549 -> "quatre-vingt-dix-sept, quatre-vingt-un, soixante-cinq, quarante-neuf"
+ */
+export function formatPhoneByPairs(phone, lang = 'fr') {
+  if (!phone) return '';
+  let clean = String(phone).replace(/\D/g, '');
+  if (clean.length === 11 && clean.startsWith('227')) {
+    clean = clean.slice(3);
+  } else if (clean.length > 8) {
+    clean = clean.slice(-8);
+  }
+
+  if (clean.length !== 8) {
+    return clean;
+  }
+
+  const pairs = [
+    clean.slice(0, 2),
+    clean.slice(2, 4),
+    clean.slice(4, 6),
+    clean.slice(6, 8),
+  ];
+
+  if (lang === 'ha') {
+    return pairs.map(twoDigitsToHaoussaWords).join(', ');
+  }
+  return pairs.map(twoDigitsToFrenchWords).join(', ');
+}
+
+/**
  * Construit le message vocal de confirmation selon le type de sortie et la langue.
  */
 export function buildVoiceConfirmationText({
@@ -89,24 +198,43 @@ export function buildVoiceConfirmationText({
 
   if (lang === 'ha') {
     const haoussaAmount = numberToHaoussaWords(numericVal);
-    const targetName = recipientName || recipientPhone || 'abokin ciniki';
+    const targetName = recipientName && !recipientName.startsWith('+227') ? recipientName : '';
 
     switch (type) {
-      case 'transfer_agency':
-        return `Tabbatar da aikawa. Za ku tura kudin CFA ${haoussaAmount} don amsa a ofishin Niger Telecoms ga ${targetName}.`;
+      case 'transfer_agency': {
+        const phonePairsHa = formatPhoneByPairs(recipientPhone, 'ha');
+        const phonePart = phonePairsHa ? `lamba ${phonePairsHa}` : '';
+        const who = targetName && phonePart
+          ? `${targetName}, ${phonePart}`
+          : (targetName || phonePart || 'abokin ciniki');
+        return `Tabbatar da aikawa. Za ku tura kudin CFA ${haoussaAmount} don amsa a ofishin Niger Telecoms ga ${who}.`;
+      }
       case 'withdraw':
         return `Tabbatar da cire kudi. Za ku cire kudin CFA ${haoussaAmount} a ofishin Niger Telecoms.`;
       case 'transfer_p2p':
       default:
-        return `Tabbatar da aikawa. Za ku tura kudin CFA ${haoussaAmount} ga ${targetName}.`;
+        return `Tabbatar da aikawa. Za ku tura kudin CFA ${haoussaAmount} ga ${targetName || recipientPhone || 'abokin ciniki'}.`;
     }
   }
 
   // Français
   const formattedAmount = numericVal.toLocaleString('fr-FR');
   switch (type) {
-    case 'transfer_agency':
-      return `Confirmation de transfert d'argent. Vous allez envoyer ${formattedAmount} Francs CFA pour retrait au guichet à ${nameOrPhone}.`;
+    case 'transfer_agency': {
+      const phonePairsFr = formatPhoneByPairs(recipientPhone, 'fr');
+      const targetName = recipientName && !recipientName.startsWith('+227') ? recipientName : '';
+      let targetPhrase = '';
+      if (targetName && phonePairsFr) {
+        targetPhrase = `à ${targetName}, au numéro ${phonePairsFr}`;
+      } else if (phonePairsFr) {
+        targetPhrase = `au numéro ${phonePairsFr}`;
+      } else if (targetName) {
+        targetPhrase = `à ${targetName}`;
+      } else {
+        targetPhrase = `au destinataire`;
+      }
+      return `Confirmation de transfert d'argent. Vous allez envoyer ${formattedAmount} Francs CFA pour retrait au guichet ${targetPhrase}.`;
+    }
     case 'withdraw':
       return `Confirmation de retrait. Vous allez retirer ${formattedAmount} Francs CFA en espèces au guichet Niger Telecoms.`;
     case 'transfer_p2p':
