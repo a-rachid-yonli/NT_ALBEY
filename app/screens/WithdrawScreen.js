@@ -828,7 +828,7 @@ ${details.feesIncluded ? '✅ Frais inclus' : '❌ Hors frais'}
   // 🔒 Protection anti-double retrait : Bloque le bouton retour physique Android pendant l'émission
   useEffect(() => {
     const onBackPress = () => {
-      if (isSending) return true;
+      if (isWithdrawing) return true;
       if (receiptModalVisible) {
         finishWithdraw();
         return true;
@@ -837,7 +837,7 @@ ${details.feesIncluded ? '✅ Frais inclus' : '❌ Hors frais'}
     };
     const backSub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
     return () => backSub.remove();
-  }, [isSending, receiptModalVisible]);
+  }, [isWithdrawing, receiptModalVisible]);
 
   const getConfirmationTotal = () => {
     if (!amount || parseInt(amount) <= 0) return '0 FCFA';
