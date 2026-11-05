@@ -331,6 +331,9 @@ export default function ChatbotScreen({ navigation }) {
       }
     };
     loadHistory();
+    return () => {
+      disconnectSocket();
+    };
   }, []);
 
   // ═════════════════════════════════════════════════════════

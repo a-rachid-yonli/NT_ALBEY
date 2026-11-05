@@ -38,10 +38,13 @@ function readLogs() {
 
 function writeLogs(logs) {
   try {
+    const tmp = `${AUDIT_PATH}.tmp`;
     fs.writeFileSync(
-      AUDIT_PATH,
-      JSON.stringify(logs.slice(0, MAX_ENTRIES), null, 2)
+      tmp,
+      JSON.stringify(logs.slice(0, MAX_ENTRIES), null, 2),
+      'utf8'
     );
+    fs.renameSync(tmp, AUDIT_PATH);
   } catch (e) {
     console.error('❌ Audit write error:', e.message);
   }

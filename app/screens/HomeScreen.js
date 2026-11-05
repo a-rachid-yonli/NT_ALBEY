@@ -17,6 +17,7 @@ import {
   Linking,
   RefreshControl,
   Vibration,
+  AppState,
 } from 'react-native';
 import Svg, { Path, Circle, Rect } from 'react-native-svg';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
@@ -58,7 +59,7 @@ const COLORS = {
   iconPurple:   '#8B5CF6',
 };
 
-const AUTO_REFRESH_INTERVAL_MS = 5000;
+const AUTO_REFRESH_INTERVAL_MS = 30000;
 
 const hapticTap = (intensity = 'light') => {
   if (Platform.OS === 'web') return;
@@ -609,7 +610,9 @@ export default function HomeScreen({ navigation }) {
     useCallback(() => {
       refreshWallet();
       const interval = setInterval(() => {
-        refreshWallet();
+        if (AppState.currentState === 'active') {
+          refreshWallet();
+        }
       }, AUTO_REFRESH_INTERVAL_MS);
       return () => clearInterval(interval);
     }, [refreshWallet])

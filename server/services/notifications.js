@@ -36,7 +36,9 @@ function readAll() {
 
 function writeAll(list) {
   try {
-    fs.writeFileSync(NOTIF_PATH, JSON.stringify(list, null, 2));
+    const tmp = `${NOTIF_PATH}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(list, null, 2), 'utf8');
+    fs.renameSync(tmp, NOTIF_PATH);
   } catch (e) {
     console.error('❌ notif write:', e.message);
   }

@@ -38,7 +38,9 @@ function readUsers() {
 
 function writeUsers(users) {
   try {
-    fs.writeFileSync(USERS_PATH, JSON.stringify(users, null, 2));
+    const tmp = `${USERS_PATH}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(users, null, 2), 'utf8');
+    fs.renameSync(tmp, USERS_PATH);
     return true;
   } catch (err) {
     console.error('❌ Écriture users.json :', err.message);

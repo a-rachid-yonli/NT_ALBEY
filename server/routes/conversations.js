@@ -14,6 +14,12 @@ if (!fs.existsSync(convPath)) {
   fs.writeFileSync(convPath, JSON.stringify([], null, 2));
 }
 
+function saveConversations(conversations) {
+  const tmpPath = `${convPath}.tmp`;
+  fs.writeFileSync(tmpPath, JSON.stringify(conversations, null, 2), 'utf8');
+  fs.renameSync(tmpPath, convPath);
+}
+
 /**
  * Middleware d'authentification robuste pour les conversations :
  * - Vérifie le token via getJwtSecret() pour le personnel (Super Admin, Chef, Agent, Admin Sys)
@@ -152,7 +158,7 @@ router.post('/', conversationAuth, (req, res) => {
     };
 
     conversations.push(newConv);
-    fs.writeFileSync(convPath, JSON.stringify(conversations, null, 2));
+    saveConversations(conversations);
 
     // SOCKET + NOTIFICATIONS
     const io = getIO();
@@ -233,7 +239,7 @@ router.post('/:id/messages', conversationAuth, (req, res) => {
     if (!Array.isArray(conv.messages)) conv.messages = [];
     conv.messages.push(newMsg);
     conv.updatedAt = new Date().toISOString();
-    fs.writeFileSync(convPath, JSON.stringify(conversations, null, 2));
+    saveConversations(conversations);
 
     const io = getIO();
     if (io) {
@@ -288,7 +294,7 @@ router.patch('/:id/status', conversationAuth, requireRole('super_admin', 'chef',
     const previousStatus = conv.status;
     conv.status = status;
     conv.updatedAt = new Date().toISOString();
-    fs.writeFileSync(convPath, JSON.stringify(conversations, null, 2));
+    saveConversations(conversations);
 
     log({
       action: 'update_conversation_status',
@@ -323,7 +329,7 @@ router.patch('/:id/archive', conversationAuth, requireRole('super_admin', 'chef'
 
     conv.archived = archived;
     conv.updatedAt = new Date().toISOString();
-    fs.writeFileSync(convPath, JSON.stringify(conversations, null, 2));
+    saveConversations(conversations);
 
     log({
       action: archived ? 'archive_conversation' : 'unarchive_conversation',
@@ -357,7 +363,7 @@ router.delete('/:id', conversationAuth, requireRole('super_admin'), (req, res) =
 
     const clientName = conv.clientName;
     conversations = conversations.filter(c => c.id !== convId);
-    fs.writeFileSync(convPath, JSON.stringify(conversations, null, 2));
+    saveConversations(conversations);
 
     log({
       action: 'delete_conversation',
