@@ -35,7 +35,7 @@ import * as LocalAuthentication from 'expo-local-authentication';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { API } from '../services/api';
-import { getLogoBase64 } from '../utils/pdfUtils';
+import { getLogoBase64, escapeHtml } from '../utils/pdfUtils';
 import { useTransactions } from '../context/TransactionContext';
 import { saveTxMetadata } from '../utils/txRefCache';
 import VoiceAssistantButton from '../components/VoiceAssistantButton';
@@ -606,8 +606,8 @@ export default function WithdrawScreen({ navigation }) {
     const logoHtml = logoBase64
       ? `<img src="${logoBase64}" alt="NT Albey Logo" class="logo" />`
       : `<div style="background:linear-gradient(135deg,#FF6600,#FF8833);color:white;padding:10px 30px;border-radius:10px;display:inline-block;font-weight:700;font-size:22px;letter-spacing:4px;margin-bottom:6px;">NT ALBEY</div>`;
-    const date = details.date || new Date().toLocaleString('fr-FR');
-    const feesLabel = details.amount <= 15000 ? '50 FCFA (fixe)' : '0.75% du montant';
+    const date = escapeHtml(details.date || new Date().toLocaleString('fr-FR'));
+    const feesLabel = escapeHtml(details.amount <= 15000 ? '50 FCFA (fixe)' : '0.75% du montant');
     return `<!DOCTYPE html>
       <html><head><meta charset="UTF-8"><style>
         * { margin:0; padding:0; box-sizing:border-box; }
@@ -632,7 +632,7 @@ export default function WithdrawScreen({ navigation }) {
         <div class="header">${logoHtml}<h1>NT ALBEY</h1></div>
         <div class="success-badge"><span>✅ RETRAIT CONFIRMÉ</span></div>
         <div class="highlight-box">
-          <div class="info-row"><span class="info-label">📍 Région de retrait</span><span class="info-value">${details.region || 'N/A'}</span></div>
+          <div class="info-row"><span class="info-label">📍 Région de retrait</span><span class="info-value">${escapeHtml(details.region || 'N/A')}</span></div>
           <div class="info-row"><span class="info-label">💰 Montant retiré</span><span class="info-value amount-received">${safeFormatCurrency(details.receivedAmount)}</span></div>
         </div>
         <div class="info-row"><span class="info-label">📋 Frais de retrait</span><span class="info-value fees-value">${safeFormatCurrency(details.fees)}</span></div>

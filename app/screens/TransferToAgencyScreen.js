@@ -36,7 +36,7 @@ import * as LocalAuthentication from 'expo-local-authentication';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { API } from '../services/api';
-import { getLogoBase64 } from '../utils/pdfUtils';
+import { getLogoBase64, escapeHtml } from '../utils/pdfUtils';
 import { useTransactions } from '../context/TransactionContext';
 import { saveTxMetadata } from '../utils/txRefCache';
 import { pickPhoneContact } from '../utils/contactPicker';
@@ -780,8 +780,8 @@ export default function TransferToAgencyScreen({ navigation }) {
     const logoHtml = logoBase64
       ? `<img src="${logoBase64}" alt="NT Albey Logo" class="logo" />`
       : `<div style="background:linear-gradient(135deg,#008933,#00A34D);color:white;padding:10px 30px;border-radius:10px;display:inline-block;font-weight:700;font-size:22px;letter-spacing:4px;box-shadow:0 4px 15px rgba(0,137,51,0.3);margin-bottom:6px;">NT ALBEY</div>`;
-    const date = details.date || new Date().toLocaleString('fr-FR');
-    const feesLabel = details.amount <= 15000 ? '100 FCFA (fixe)' : '1.5% du montant';
+    const date = escapeHtml(details.date || new Date().toLocaleString('fr-FR'));
+    const feesLabel = escapeHtml(details.amount <= 15000 ? '100 FCFA (fixe)' : '1.5% du montant');
     return `<!DOCTYPE html>
       <html>
         <head><meta charset="UTF-8"><style>
@@ -814,12 +814,12 @@ export default function TransferToAgencyScreen({ navigation }) {
         </style></head>
         <body>
           <div class="header"><div class="logo-container">${logoHtml}<h1>NT ALBEY</h1></div><div class="subtitle">Votre argent, partout, tout le temps</div></div>
-          <div class="transaction-id">TRANSACTION N° ${details.reference || 'N/A'}</div>
+          <div class="transaction-id">TRANSACTION N° ${escapeHtml(details.reference || 'N/A')}</div>
           <div class="success-badge"><span>✅ TRANSFERT AU GUICHET CONFIRMÉ</span></div>
           <div class="highlight-box">
-            <div class="info-row"><span class="info-label">👤 Bénéficiaire</span><span class="info-value">${details.beneficiaryName || 'N/A'}</span></div>
-            <div class="info-row"><span class="info-label">📞 Téléphone</span><span class="info-value">${details.phoneNumber || 'N/A'}</span></div>
-            <div class="info-row"><span class="info-label">📍 Région</span><span class="info-value">${details.region || 'N/A'}</span></div>
+            <div class="info-row"><span class="info-label">👤 Bénéficiaire</span><span class="info-value">${escapeHtml(details.beneficiaryName || 'N/A')}</span></div>
+            <div class="info-row"><span class="info-label">📞 Téléphone</span><span class="info-value">${escapeHtml(details.phoneNumber || 'N/A')}</span></div>
+            <div class="info-row"><span class="info-label">📍 Région</span><span class="info-value">${escapeHtml(details.region || 'N/A')}</span></div>
             <div class="info-row"><span class="info-label">💰 Montant envoyé</span><span class="info-value amount-sent">${safeFormatCurrency(details.amount)}</span></div>
           </div>
           <div class="info-row"><span class="info-label">📋 Frais de transfert</span><span class="info-value fees-value">${safeFormatCurrency(details.fees)}</span></div>
@@ -827,7 +827,7 @@ export default function TransferToAgencyScreen({ navigation }) {
           <div class="info-row"><span class="info-label">${details.feesIncluded ? '✅ Frais inclus' : '❌ Hors frais'}</span><span class="info-value">${details.feesIncluded ? 'Inclus dans le montant' : 'Ajoutés au montant'}</span></div>
           <div class="info-row"><span class="info-label">💳 Total débité</span><span class="info-value amount-highlight">${safeFormatCurrency(details.debitedAmount)}</span></div>
           <div class="info-row"><span class="info-label">📥 Reçu par le bénéficiaire</span><span class="info-value amount-received">${safeFormatCurrency(details.receivedAmount)}</span></div>
-          <div class="info-row"><span class="info-label">🔑 Code de retrait</span><span class="info-value" style="font-family:monospace;font-weight:800;color:#FF6600;">${details.reference || 'N/A'}</span></div>
+          <div class="info-row"><span class="info-label">🔑 Code de retrait</span><span class="info-value" style="font-family:monospace;font-weight:800;color:#FF6600;">${escapeHtml(details.reference || 'N/A')}</span></div>
           <div class="info-row"><span class="info-label">📅 Date</span><span class="info-value">${date}</span></div>
           <div class="footer"><div class="brand">NT ALBEY</div><div class="slogan">Votre argent, partout, tout le temps</div><div class="date">Document généré le ${new Date().toLocaleString('fr-FR')}</div><div class="support">📞 Support : 555 | 📧 support@ntalbey.ne</div></div>
         </body>

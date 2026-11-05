@@ -189,6 +189,8 @@ function LoginScreen({ navigation }) {
       Alert.alert(t('common.error'), error.message || t('common.incorrectPin'));
     } finally {
       setIsLoading(false);
+      // 🔐 Zeroization : purge mémoire immédiate du PIN en RAM (OWASP MASVS / PCI-DSS)
+      setPin('');
     }
   };
 

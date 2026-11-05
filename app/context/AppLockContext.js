@@ -1,6 +1,7 @@
 // context/AppLockContext.js
-// ✅ Grace period cohérent (5s) + reset lock au logout
+// ✅ Grace period cohérent (60s) + reset lock au logout
 // 🔐 Intégration sécurité : expose isDeviceCompromised
+// ⏱️ Auto-verrouillage d'inactivité au premier plan (3 min) sans altérer l'UX
 import React, {
   createContext,
   useContext,
@@ -9,14 +10,17 @@ import React, {
   useState,
   useCallback,
 } from 'react';
-import { AppState } from 'react-native';
+import { AppState, View, PanResponder } from 'react-native';
 import { useAuth } from './AuthContext';
 import { isDeviceCompromised } from '../utils/security';
 
 const AppLockContext = createContext(null);
 
-// ✅ Délai de grâce : 60 secondes (permet de consulter un SMS/code sans reverrouiller)
+// ✅ Délai de grâce arrière-plan : 60 secondes (permet de consulter un SMS/code sans reverrouiller)
 const GRACE_PERIOD_MS = 60 * 1000;
+
+// ⏱️ Délai d'inactivité au premier plan : 3 minutes (norme OWASP MASVS / PCI-DSS)
+const INACTIVITY_TIMEOUT_MS = 3 * 60 * 1000;
 
 // ✅ Max tentatives PIN avant déconnexion auto
 const MAX_ATTEMPTS = 5;
@@ -32,6 +36,35 @@ export const AppLockProvider = ({ children }) => {
   const backgroundTimeRef = useRef(null);
   const appStateRef = useRef(AppState.currentState);
   const userRef = useRef(user);
+  const inactivityTimerRef = useRef(null);
+
+  // ⏱️ Réarmement du timer d'inactivité
+  const resetInactivityTimer = useCallback(() => {
+    if (inactivityTimerRef.current) {
+      clearTimeout(inactivityTimerRef.current);
+      inactivityTimerRef.current = null;
+    }
+    if (userRef.current) {
+      inactivityTimerRef.current = setTimeout(() => {
+        setIsLocked(true);
+        setAttempts(0);
+      }, INACTIVITY_TIMEOUT_MS);
+    }
+  }, []);
+
+  // Détecte toute interaction tactile sur l'app sans l'intercepter
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponderCapture: () => {
+        resetInactivityTimer();
+        return false;
+      },
+      onMoveShouldSetPanResponderCapture: () => {
+        resetInactivityTimer();
+        return false;
+      },
+    })
+  ).current;
 
   // ✅ Détecter le compromis une seule fois au montage
   useEffect(() => {
@@ -52,8 +85,17 @@ export const AppLockProvider = ({ children }) => {
       setIsLocked(false);
       setAttempts(0);
       backgroundTimeRef.current = null;
+      if (inactivityTimerRef.current) {
+        clearTimeout(inactivityTimerRef.current);
+        inactivityTimerRef.current = null;
+      }
+    } else {
+      resetInactivityTimer();
     }
-  }, [user]);
+    return () => {
+      if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
+    };
+  }, [user, resetInactivityTimer]);
 
   // Écoute des changements d'état de l'app
   useEffect(() => {
@@ -64,6 +106,10 @@ export const AppLockProvider = ({ children }) => {
       // Passage en arrière-plan
       if (prevState === 'active' && nextState !== 'active') {
         backgroundTimeRef.current = Date.now();
+        if (inactivityTimerRef.current) {
+          clearTimeout(inactivityTimerRef.current);
+          inactivityTimerRef.current = null;
+        }
       }
 
       // Retour au premier plan
@@ -78,19 +124,24 @@ export const AppLockProvider = ({ children }) => {
           if (elapsed > GRACE_PERIOD_MS) {
             setIsLocked(true);
             setAttempts(0);
+          } else {
+            resetInactivityTimer();
           }
+        } else {
+          resetInactivityTimer();
         }
         backgroundTimeRef.current = null;
       }
     });
 
     return () => subscription.remove();
-  }, []);
+  }, [resetInactivityTimer]);
 
   const unlock = useCallback(() => {
     setIsLocked(false);
     setAttempts(0);
-  }, []);
+    resetInactivityTimer();
+  }, [resetInactivityTimer]);
 
   const registerFailedAttempt = useCallback(() => {
     setAttempts((prev) => {
@@ -116,7 +167,11 @@ export const AppLockProvider = ({ children }) => {
   };
 
   return (
-    <AppLockContext.Provider value={value}>{children}</AppLockContext.Provider>
+    <AppLockContext.Provider value={value}>
+      <View style={{ flex: 1 }} {...panResponder.panHandlers}>
+        {children}
+      </View>
+    </AppLockContext.Provider>
   );
 };
 

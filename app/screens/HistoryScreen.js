@@ -25,7 +25,7 @@ import Svg, { Path, Circle, Rect, Line } from 'react-native-svg';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system/legacy';
-import { getLogoBase64 } from '../utils/pdfUtils';
+import { getLogoBase64, escapeHtml } from '../utils/pdfUtils';
 import { useTransactions } from '../context/TransactionContext';
 import { API } from '../services/api';
 import { getTxMetadata } from '../utils/txRefCache';
@@ -800,10 +800,10 @@ export default function HistoryScreen({ navigation }) {
       : `<div style="background:linear-gradient(135deg,#008933,#00A34D);color:white;padding:10px 30px;border-radius:10px;display:inline-block;font-weight:700;font-size:22px;letter-spacing:4px;box-shadow:0 4px 15px rgba(0,137,51,0.3);margin-bottom:6px;">NT ALBEY</div>`;
 
     const amountStr = details.isDebit
-      ? `- ${details.grossAmount.toLocaleString()} ${details.currency}`
-      : `+ ${details.grossAmount.toLocaleString()} ${details.currency}`;
+      ? `- ${details.grossAmount.toLocaleString()} ${escapeHtml(details.currency)}`
+      : `+ ${details.grossAmount.toLocaleString()} ${escapeHtml(details.currency)}`;
 
-    const statusText = formatStatus(details.status);
+    const statusText = escapeHtml(formatStatus(details.status));
     const statusColor = getStatusColor(details.status);
 
     return `<!DOCTYPE html>
@@ -845,31 +845,31 @@ export default function HistoryScreen({ navigation }) {
           </div>
 
           <div class="highlight-box">
-            <div class="info-row"><span class="info-label">📋 Type d'opération</span><span class="info-value">${details.description}</span></div>
+            <div class="info-row"><span class="info-label">📋 Type d'opération</span><span class="info-value">${escapeHtml(details.description)}</span></div>
             <div class="info-row"><span class="info-label">💰 Montant</span><span class="info-value ${details.isDebit ? 'amount-negative' : 'amount-positive'}">${amountStr}</span></div>
           </div>
 
-          <div class="info-row"><span class="info-label">📱 Émetteur</span><span class="info-value">${details.senderName || '—'}</span></div>
-          ${details.senderIsPhone && details.senderPhone ? `<div class="info-row"><span class="info-label">📞 Tél. émetteur</span><span class="info-value">+227 ${details.senderPhone}</span></div>` : ''}
-          <div class="info-row"><span class="info-label">👤 Bénéficiaire</span><span class="info-value">${details.receiverName || '—'}</span></div>
-          ${details.receiverIsPhone && details.receiverPhone ? `<div class="info-row"><span class="info-label">📞 Tél. bénéficiaire</span><span class="info-value">+227 ${details.receiverPhone}</span></div>` : ''}
+          <div class="info-row"><span class="info-label">📱 Émetteur</span><span class="info-value">${escapeHtml(details.senderName || '—')}</span></div>
+          ${details.senderIsPhone && details.senderPhone ? `<div class="info-row"><span class="info-label">📞 Tél. émetteur</span><span class="info-value">+227 ${escapeHtml(details.senderPhone)}</span></div>` : ''}
+          <div class="info-row"><span class="info-label">👤 Bénéficiaire</span><span class="info-value">${escapeHtml(details.receiverName || '—')}</span></div>
+          ${details.receiverIsPhone && details.receiverPhone ? `<div class="info-row"><span class="info-label">📞 Tél. bénéficiaire</span><span class="info-value">+227 ${escapeHtml(details.receiverPhone)}</span></div>` : ''}
 
-          ${details.hasFeeInfo ? `<div class="info-row"><span class="info-label">📋 Frais</span><span class="info-value fees">${details.feeAmount.toLocaleString()} ${details.currency}</span></div>` : ''}
-          ${details.hasFeeInfo ? `<div class="info-row"><span class="info-label">🎁 Net</span><span class="info-value net">${details.netAmount.toLocaleString()} ${details.currency}</span></div>` : ''}
-          ${details.hasFeeInfo ? `<div class="info-row"><span class="info-label">💳 Total débité</span><span class="info-value total">${details.totalDebited.toLocaleString()} ${details.currency}</span></div>` : ''}
+          ${details.hasFeeInfo ? `<div class="info-row"><span class="info-label">📋 Frais</span><span class="info-value fees">${details.feeAmount.toLocaleString()} ${escapeHtml(details.currency)}</span></div>` : ''}
+          ${details.hasFeeInfo ? `<div class="info-row"><span class="info-label">🎁 Net</span><span class="info-value net">${details.netAmount.toLocaleString()} ${escapeHtml(details.currency)}</span></div>` : ''}
+          ${details.hasFeeInfo ? `<div class="info-row"><span class="info-label">💳 Total débité</span><span class="info-value total">${details.totalDebited.toLocaleString()} ${escapeHtml(details.currency)}</span></div>` : ''}
 
-          <div class="info-row"><span class="info-label">📅 Date</span><span class="info-value">${details.dateFormatted}</span></div>
+          <div class="info-row"><span class="info-label">📅 Date</span><span class="info-value">${escapeHtml(details.dateFormatted)}</span></div>
           <div class="info-row"><span class="info-label">✅ Statut</span><span class="info-value"><span class="status-badge">${statusText}</span></span></div>
 
           ${(details.businessRef || details.technicalId) ? `
           <div class="ref-block">
             ${details.businessRef ? `
               <div class="ref-label">🔑 Référence transaction</div>
-              <div class="ref-value">${details.businessRef}</div>
+              <div class="ref-value">${escapeHtml(details.businessRef)}</div>
             ` : ''}
             ${details.technicalId ? `
               <div class="ref-uuid-label">🆔 ID technique (support)</div>
-              <div class="ref-uuid">${details.technicalId}</div>
+              <div class="ref-uuid">${escapeHtml(details.technicalId)}</div>
             ` : ''}
           </div>` : ''}
 

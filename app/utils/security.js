@@ -24,37 +24,46 @@ function detectDynamicHooking() {
   const flags = [];
 
   try {
-    // 1. Détection des symboles globaux injectés par Frida
+    // 1. Détection des symboles globaux injectés par Frida / Substrate / Magisk / Cycript
     const g = typeof global !== 'undefined' ? global : {};
     const w = typeof window !== 'undefined' ? window : {};
 
-    const fridaIndicators = [
+    const hookIndicators = [
       '__frida',
       'frida',
       '_frida',
       '__frida_rpc',
       'rpc',
       'Frida',
+      'cydia',
+      '_substrate',
+      '__substrate',
+      'cycript',
     ];
 
-    for (const key of fridaIndicators) {
+    for (const key of hookIndicators) {
       if (typeof g[key] !== 'undefined' || typeof w[key] !== 'undefined') {
-        flags.push(`Frida symbol detected: ${key}`);
+        flags.push(`Hook symbol detected: ${key}`);
       }
     }
 
-    // 2. Détection de modification non autorisée de l'environnement JS en production
+    // 2. Détection de débogage dynamique / DevTools / WebSocket Inspector en production
     if (!__DEV__) {
-      // Détecte si un inspecteur distant est branché en production sur le moteur Hermes/V8
+      // Détecte si un inspecteur DevTools est actif en production
       if (g.__REACT_DEVTOOLS_GLOBAL_HOOK__ && g.__REACT_DEVTOOLS_GLOBAL_HOOK__.isDisabled === false) {
         flags.push('Unauthorized DevTools Hook in production');
       }
+
+      // Détecte si un inspecteur ou debugger à distance est rattaché
+      if (typeof g.__inspector !== 'undefined' || typeof g.__REMOTE_DEBUGGER_IS_CONNECTED__ !== 'undefined') {
+        flags.push('Remote Debugger / ADB Inspector active in production');
+      }
     }
 
-    // 3. Détection des variables spécifiques aux hooks natifs Android
+    // 3. Détection des bridges de hooking Android (Xposed, EdXposed, LSPosed)
     if (Platform.OS === 'android') {
-      if (typeof g.XposedBridge !== 'undefined' || typeof w.XposedBridge !== 'undefined') {
-        flags.push('Xposed framework bridge active');
+      if (typeof g.XposedBridge !== 'undefined' || typeof w.XposedBridge !== 'undefined' || typeof g._xposed !== 'undefined') {
+        flags.push('Xposed/LSPosed framework bridge active');
       }
     }
   } catch (_) {
