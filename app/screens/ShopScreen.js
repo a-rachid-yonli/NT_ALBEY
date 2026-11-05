@@ -1262,7 +1262,7 @@ export default function ShopScreen({ navigation }) {
     if (selectedCategory === 'stock') return 'shop_stock';
     if (selectedCategory === 'softphone') return 'shop_softphone';
     if (selectedCategory === 'credit') {
-      return airtimeRecipientType === 'other' ? 'shop_credit_other' : 'shop_credit_self';
+      return airtimeMode === 'other' ? 'shop_credit_other' : 'shop_credit_self';
     }
     return 'shop';
   };
@@ -1280,7 +1280,7 @@ export default function ShopScreen({ navigation }) {
     if (selectedProduct) {
       return selectedProduct.phoneNumber || selectedProduct.blrNumber || '';
     }
-    if (selectedCategory === 'credit' && airtimeRecipientType === 'other') return airtimeTargetPhone;
+    if (selectedCategory === 'credit' && airtimeMode === 'other') return airtimeTargetPhone;
     if (selectedCategory === 'softphone') return softphoneTargetPhone;
     if (selectedCategory === 'blr') return blrResult?.numeroBlr || cleanBlrNumber(blrNumber) || '';
     return '';
