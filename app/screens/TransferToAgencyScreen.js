@@ -45,6 +45,7 @@ import VoiceAssistantButton from '../components/VoiceAssistantButton';
 import SuccessCheckmarkOverlay from '../components/SuccessCheckmarkOverlay';
 import { triggerAmountShake, triggerAmountPop, getAmountErrorMessage } from '../utils/amountEffects';
 import { triggerSelectionHaptic } from '../utils/haptics';
+import { copySecurely } from '../utils/secureClipboard';
 import { verifyTransactionAuth, AUTH_METHOD, AUTH_CANCELLED } from '../utils/transactionAuth';
 import { isValidPin } from '../utils/validators';
 
@@ -863,7 +864,7 @@ export default function TransferToAgencyScreen({ navigation }) {
     }
   };
 
-  const handleShareText = (details) => {
+  const handleShareText = async (details) => {
     if (!details) { showToast('error', 'Erreur', 'Aucune donnée à partager.'); return; }
     const message = `NT ALBEY - REÇU DE TRANSFERT AU GUICHET
 ━━━━━━━━━━━━━━━━━━━━━
@@ -882,7 +883,8 @@ ${details.feesIncluded ? '✅ Frais inclus' : '❌ Hors frais'}
 ━━━━━━━━━━━━━━━━━━━━━
 🏦 Retrait dans toutes les agences NT Albey
 📞 Support : 555 | 📧 support@ntalbey.ne`;
-    Share.share({ message, title: `Reçu de transfert - ${details.reference || 'NT Albey'}` });
+    await copySecurely(message, { ttlSeconds: 60 });
+    showToast('success', 'Reçu copié', 'Le reçu a été copié. Il s\'effacera dans 60s pour votre sécurité.');
   };
 
   const finishTransfer = () => {

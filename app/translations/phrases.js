@@ -13,6 +13,7 @@ export const PHRASE_TRANSLATIONS = {
   "• Fausse loterie :": { en: "• Fake lottery:", ha: "• Caca ta ƙarya:", zr: "• Haya-foori taara:" },
   "• Code PIN :": { en: "• PIN Code:", ha: "• Lambar PIN:", zr: "• PIN Lamba:" },
   "• Vérification :": { en: "• Verification:", ha: "• Tantancewa:", zr: "• Tabbatandiyan:" },
+  "Le reçu a été copié. Il s'effacera dans 60s pour votre sécurité.": { en: "Receipt copied. It will auto-clear in 60s for your security.", ha: "An kwafi rasit. Zai share kansa a cikin dakika 60 don tsaronku.", zr: "Reesiyoo kopeendi. A ga tuusu miniti 1 ra war saajaw se." },
   // --- NOUVELLES FONCTIONNALITÉS & VALUATIONS (FR / EN / HA / ZR) ---
   "Confirmation Vocale": { en: "Voice Confirmation", ha: "Tabbatarwa da Murya", zr: "Jinde Tabbatandiyan" },
   "Confirmation vocale": { en: "Voice confirmation", ha: "Tabbatarwa da murya", zr: "Jinde tabbatandiyan" },

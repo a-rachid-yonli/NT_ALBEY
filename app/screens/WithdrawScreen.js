@@ -42,6 +42,7 @@ import VoiceAssistantButton from '../components/VoiceAssistantButton';
 import SuccessCheckmarkOverlay from '../components/SuccessCheckmarkOverlay';
 import { triggerAmountShake, triggerAmountPop, getAmountErrorMessage } from '../utils/amountEffects';
 import { triggerSelectionHaptic } from '../utils/haptics';
+import { copySecurely } from '../utils/secureClipboard';
 import {
   verifyTransactionAuth,
   AUTH_METHOD,
@@ -673,7 +674,7 @@ export default function WithdrawScreen({ navigation }) {
     }
   };
 
-  const handleCopyReceipt = (details) => {
+  const handleCopyReceipt = async (details) => {
     if (!details) return;
     const message = `NT ALBEY - REÇU DE RETRAIT
 ━━━━━━━━━━━━━━━━━━━━━
@@ -688,14 +689,8 @@ ${details.feesIncluded ? '✅ Frais inclus' : '❌ Hors frais'}
 📅 Date : ${details.date}
 🔑 Référence : ${details.reference}
 ━━━━━━━━━━━━━━━━━━━━━`;
-    Alert.alert(
-      'Reçu copié',
-      'Le reçu a été copié.',
-      [
-        { text: 'OK' },
-        { text: 'Partager', onPress: () => Share.share({ message, title: `Reçu - ${details.reference}` }) },
-      ]
-    );
+    await copySecurely(message, { ttlSeconds: 60 });
+    showToast('success', 'Reçu copié', 'Le reçu a été copié. Il s\'effacera dans 60s pour votre sécurité.');
   };
 
   const generateReference = () => {

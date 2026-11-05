@@ -47,6 +47,7 @@ import { parseAmount, isValidQRPayload } from '../utils/validators';
 import { isDeviceCompromised, guardSensitiveOperation } from '../utils/security';
 import { triggerAmountShake, triggerAmountPop, getAmountErrorMessage } from '../utils/amountEffects';
 import { triggerSelectionHaptic } from '../utils/haptics';
+import { copySecurely } from '../utils/secureClipboard';
 
 const NOTIFIED_TX_IDS_KEY = '@ntalbey_notified_tx_ids';
 const RECENT_AMOUNTS_KEY = '@ntalbey_recent_amounts_by_phone';
@@ -1351,7 +1352,7 @@ export default function SendMoneyScreen({ navigation }) {
   // ═════════════════════════════════════════════════════════
   // REÇU
   // ═════════════════════════════════════════════════════════
-  const handleCopyReceipt = (details) => {
+  const handleCopyReceipt = async (details) => {
     if (!details) return;
     const message = `NT ALBEY - REÇU DE TRANSFERT
 ━━━━━━━━━━━━━━━━━━━━━
@@ -1366,17 +1367,8 @@ export default function SendMoneyScreen({ navigation }) {
 📅 Date : ${details.date || new Date().toLocaleString('fr-FR')}
 🔑 Référence : ${details.reference || 'N/A'}
 ━━━━━━━━━━━━━━━━━━━━━`;
-    Alert.alert(
-      'Reçu de transfert',
-      'Le reçu a été préparé.',
-      [
-        { text: 'OK' },
-        {
-          text: 'Partager',
-          onPress: () => Share.share({ message, title: `Reçu - ${details.reference || 'NT Albey'}` }),
-        },
-      ]
-    );
+    await copySecurely(message, { ttlSeconds: 60 });
+    showToast('success', 'Reçu copié', 'Le reçu a été copié. Il s\'effacera dans 60s pour votre sécurité.');
   };
 
   const handleExportPDF = async (details) => {

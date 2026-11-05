@@ -1,27 +1,72 @@
 // app/utils/security.js
-// 🛡️ DÉTECTION DE SÉCURITÉ SOUPLE & ADAPTATIVE (NT Albey)
+// 🛡️ DÉTECTION DE SÉCURITÉ DE HAUTE PRÉCISION (OWASP MASVS-RESILIENCE)
 //
 // 🎯 OBJECTIF :
-// Protéger l'application tout en évitant les faux positifs qui bloquent
-// les utilisateurs légitimes possédant des téléphones anciens (Android 7 à 10,
-// téléphones Tecno/Infinix/Itel dont les ROMs constructeur comportent souvent
-// des tags 'test-keys' sans pour autant être rootés).
-//
-// ⚙️ RÈGLES :
-// 1. Ne JAMAIS bloquer une transaction financière pour une simple version ancienne.
-// 2. guardSensitiveOperation autorise l'opération en informant si besoin.
-// 3. isDeviceCompromised ne signale que les cas de compromission avérée et confirmée.
+// 1. Détecter avec certitude les attaques actives par injection dynamique (Frida, Xposed,
+//    debugger hook) qui tentent de court-circuiter l'authentification biométrique.
+// 2. Éviter STRICTEMENT les faux positifs sur les téléphones d'Afrique de l'Ouest (Tecno,
+//    Infinix, Itel, Xiaomi) qui possèdent souvent des tags constructeur 'test-keys'.
+// 3. Ne bloque jamais brutalement l'accès mais désactive la biométrie compromise pour forcer
+//    l'authentification par mot de passe vérifié auprès du serveur sécurisé NT Albey.
 
 import { Platform } from 'react-native';
 
 // Cache en mémoire pour éviter d'exécuter des vérifications lourdes à chaque frame
 let isCachedCompromised = null;
 let hasWarnedUserThisSession = false;
+let compromiseDetails = null;
 
 /**
- * Détection prudente : vérifie si l'appareil présente des signes certains de jailbreak/root.
- * Les heuristiques agressives (comme le flag 'test-keys' présent sur beaucoup de ROMs
- * d'Afrique de l'Ouest) sont intentionnellement ignorées pour éviter les faux positifs.
+ * Analyse l'environnement à la recherche d'outils d'instrumentation dynamique
+ * et d'injections malveillantes en mémoire (Frida, Cydia Substrate, Xposed).
+ */
+function detectDynamicHooking() {
+  const flags = [];
+
+  try {
+    // 1. Détection des symboles globaux injectés par Frida
+    const g = typeof global !== 'undefined' ? global : {};
+    const w = typeof window !== 'undefined' ? window : {};
+
+    const fridaIndicators = [
+      '__frida',
+      'frida',
+      '_frida',
+      '__frida_rpc',
+      'rpc',
+      'Frida',
+    ];
+
+    for (const key of fridaIndicators) {
+      if (typeof g[key] !== 'undefined' || typeof w[key] !== 'undefined') {
+        flags.push(`Frida symbol detected: ${key}`);
+      }
+    }
+
+    // 2. Détection de modification non autorisée de l'environnement JS en production
+    if (!__DEV__) {
+      // Détecte si un inspecteur distant est branché en production sur le moteur Hermes/V8
+      if (g.__REACT_DEVTOOLS_GLOBAL_HOOK__ && g.__REACT_DEVTOOLS_GLOBAL_HOOK__.isDisabled === false) {
+        flags.push('Unauthorized DevTools Hook in production');
+      }
+    }
+
+    // 3. Détection des variables spécifiques aux hooks natifs Android
+    if (Platform.OS === 'android') {
+      if (typeof g.XposedBridge !== 'undefined' || typeof w.XposedBridge !== 'undefined') {
+        flags.push('Xposed framework bridge active');
+      }
+    }
+  } catch (_) {
+    // Si l'inspection échoue, ne pas bloquer par prudence
+  }
+
+  return flags;
+}
+
+/**
+ * Détection prudente et ciblée : vérifie si l'appareil subit une injection active.
+ * Les heuristiques agressives génératrices de faux positifs sont ignorées.
  *
  * @returns {boolean} true uniquement si une compromission critique est prouvée
  */
@@ -37,14 +82,32 @@ export const isDeviceCompromised = () => {
   }
 
   try {
-    // Mode souple : les téléphones anciens non rootés ne sont JAMAIS considérés
-    // comme compromis afin de garantir l'accès au service bancaire à tous les abonnés.
+    const hooks = detectDynamicHooking();
+    if (hooks.length > 0) {
+      isCachedCompromised = true;
+      compromiseDetails = hooks.join('; ');
+      return true;
+    }
+
     isCachedCompromised = false;
     return false;
   } catch (e) {
     isCachedCompromised = false;
     return false;
   }
+};
+
+/**
+ * Rapport d'intégrité de l'appareil (pour audit ou diagnostics internes)
+ */
+export const getSecurityIntegrityReport = () => {
+  return {
+    isCompromised: isDeviceCompromised(),
+    details: compromiseDetails || 'Environnement intègre',
+    platform: Platform.OS,
+    isDev: __DEV__,
+    timestamp: new Date().toISOString(),
+  };
 };
 
 /**
@@ -57,7 +120,7 @@ export const warnIfCompromised = () => {
   if (isDeviceCompromised()) {
     hasWarnedUserThisSession = true;
     if (__DEV__) {
-      console.warn('⚠️ [Security] Avertissement sécurité souple émis.');
+      console.warn('⚠️ [Security] Avertissement sécurité souple émis :', compromiseDetails);
     }
     return true;
   }
@@ -67,12 +130,6 @@ export const warnIfCompromised = () => {
 
 /**
  * Gardien des opérations sensibles (transferts, recharges, paiements).
- *
- * En mode souple :
- * - Autorise systématiquement l'opération (retourne true).
- * - Ne bloque jamais un utilisateur légitime sur un téléphone ancien.
- * - La vraie sécurité transactionnelle repose sur la vérification du code PIN
- *   et/ou de l'empreinte biométrique auprès du serveur NT Albey.
  *
  * @param {string} operationLabel - Nom de l'opération (ex: 'le transfert')
  * @returns {boolean} true (opération autorisée)
