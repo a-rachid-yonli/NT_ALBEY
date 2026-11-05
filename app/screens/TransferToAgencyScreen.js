@@ -42,7 +42,6 @@ import { saveTxMetadata } from '../utils/txRefCache';
 import { pickPhoneContact } from '../utils/contactPicker';
 import RecentNumbersBar, { saveRecentNumber } from '../components/RecentNumbersBar';
 import VoiceAssistantButton from '../components/VoiceAssistantButton';
-import ScamShieldBanner from '../components/ScamShieldBanner';
 import SuccessCheckmarkOverlay from '../components/SuccessCheckmarkOverlay';
 import { triggerAmountShake, triggerAmountPop, getAmountErrorMessage } from '../utils/amountEffects';
 import { triggerSelectionHaptic } from '../utils/haptics';
@@ -1064,8 +1063,6 @@ ${details.feesIncluded ? '✅ Frais inclus' : '❌ Hors frais'}
             Solde disponible · {balance.toLocaleString('fr-FR')} FCFA
           </Text>
         )}
-
-        <ScamShieldBanner style={{ marginTop: 14, marginBottom: 8 }} />
 
         <View style={styles.suggestionsRow}>
           {['5000', '10000', '25000', '50000'].map((sug, index) => (

@@ -25,7 +25,6 @@ import { TranslatedText as Text, TranslatedTextInput as TextInput, TranslatedAle
 import { humanizeError } from '../utils/errorHandler';
 import RecentNumbersBar, { saveRecentNumber } from '../components/RecentNumbersBar';
 import VoiceAssistantButton from '../components/VoiceAssistantButton';
-import ScamShieldBanner from '../components/ScamShieldBanner';
 import SuccessCheckmarkOverlay from '../components/SuccessCheckmarkOverlay';
 import { useRoute } from '@react-navigation/native';
 import Svg, { Path, Circle, Rect } from 'react-native-svg';
@@ -1763,8 +1762,6 @@ export default function SendMoneyScreen({ navigation }) {
             Solde disponible · {balance.toLocaleString('fr-FR')} FCFA
           </Text>
         )}
-
-        <ScamShieldBanner style={{ marginTop: 14, marginBottom: 4 }} />
 
         {canSend && !pinRequired && (
           <VoiceAssistantButton
