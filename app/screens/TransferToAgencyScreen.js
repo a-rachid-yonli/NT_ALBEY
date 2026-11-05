@@ -1181,6 +1181,16 @@ ${details.feesIncluded ? '✅ Frais inclus' : '❌ Hors frais'}
             </>
           )}
         </TouchableOpacity>
+
+        {canSend && (
+          <VoiceAssistantButton
+            type="transfer_agency"
+            amount={numericAmount}
+            recipientName={beneficiaryName || ''}
+            recipientPhone={phoneNumber || ''}
+            containerStyle={{ marginTop: 18, marginBottom: 12 }}
+          />
+        )}
       </ScrollView>
 
       {/* CTA FIXE */}
@@ -1404,7 +1414,7 @@ ${details.feesIncluded ? '✅ Frais inclus' : '❌ Hors frais'}
                 type="transfer_agency"
                 amount={numericAmount}
                 recipientName={beneficiaryName || ''}
-                recipientPhone={beneficiaryPhone || ''}
+                recipientPhone={phoneNumber || ''}
               />
 
               {/* FRAIS */}

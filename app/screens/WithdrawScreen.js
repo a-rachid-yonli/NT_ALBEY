@@ -1033,9 +1033,24 @@ ${details.feesIncluded ? '✅ Frais inclus' : '❌ Hors frais'}
           ))}
         </View>
 
+        {canWithdraw && !pinRequired && (
+          <VoiceAssistantButton
+            type="withdraw"
+            amount={numericAmount}
+            recipientName={selectedDepartement?.designation || 'Guichet Niger Telecoms'}
+            containerStyle={{ marginTop: 18 }}
+          />
+        )}
+
         {/* PIN inline (fallback biométrie) */}
         {pinRequired && (
           <View style={styles.pinInline}>
+            <VoiceAssistantButton
+              type="withdraw"
+              amount={numericAmount}
+              recipientName={selectedDepartement?.designation || 'Guichet Niger Telecoms'}
+              containerStyle={{ marginBottom: 14, marginTop: 0 }}
+            />
             <View style={styles.pinInlineHeader}>
               <Text style={styles.pinInlineLabel}>Confirmez avec votre mot de passe</Text>
               <Text style={styles.pinInlineCounter}>{pin.length}/20</Text>
