@@ -8,6 +8,12 @@ export const triggerLightHaptic = () => {
   } catch (_) {}
 };
 
+export const triggerSelectionHaptic = () => {
+  try {
+    Vibration.vibrate(Platform.OS === 'ios' ? 8 : 12);
+  } catch (_) {}
+};
+
 export const triggerSuccessHaptic = () => {
   try {
     if (Platform.OS === 'android') {

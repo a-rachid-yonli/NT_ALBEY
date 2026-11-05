@@ -76,7 +76,7 @@ export function numberToHaoussaWords(num) {
  * Construit le message vocal de confirmation selon le type de sortie et la langue.
  */
 export function buildVoiceConfirmationText({
-  type = 'transfer_p2p', // 'transfer_p2p' | 'transfer_agency' | 'withdraw'
+  type = 'transfer_p2p',
   amount = 0,
   recipientName = '',
   recipientPhone = '',
@@ -102,7 +102,7 @@ export function buildVoiceConfirmationText({
     }
   }
 
-  // Langue française par défaut
+  // Français
   const formattedAmount = numericVal.toLocaleString('fr-FR');
   switch (type) {
     case 'transfer_agency':
@@ -117,9 +117,19 @@ export function buildVoiceConfirmationText({
 
 let activePlayer = null;
 let activeAudioElement = null;
+let activeSubscription = null;
+let activeTimer = null;
 
 export const stopVoice = async () => {
   try {
+    if (activeTimer) {
+      clearInterval(activeTimer);
+      activeTimer = null;
+    }
+    if (activeSubscription && typeof activeSubscription.remove === 'function') {
+      try { activeSubscription.remove(); } catch (_) {}
+      activeSubscription = null;
+    }
     if (activePlayer) {
       try {
         if (typeof activePlayer.pause === 'function') activePlayer.pause();
@@ -128,14 +138,10 @@ export const stopVoice = async () => {
       activePlayer = null;
     }
     if (typeof window !== 'undefined' && window.speechSynthesis) {
-      try {
-        window.speechSynthesis.cancel();
-      } catch (_) {}
+      try { window.speechSynthesis.cancel(); } catch (_) {}
     }
     if (activeAudioElement) {
-      try {
-        activeAudioElement.pause();
-      } catch (_) {}
+      try { activeAudioElement.pause(); } catch (_) {}
       activeAudioElement = null;
     }
   } catch (_) {}
@@ -154,15 +160,15 @@ export const speakConfirmation = async ({
   await stopVoice();
 
   const cleanLang = lang === 'ha' ? 'ha' : 'fr';
+  const audioUrl = `https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=${cleanLang}&q=${encodeURIComponent(text)}`;
 
-  // 1. Fallback Web
+  // 1. Web
   if (Platform.OS === 'web' && typeof window !== 'undefined') {
     try {
-      const audioUrl = `https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=${cleanLang}&q=${encodeURIComponent(text)}`;
       const audio = new Audio(audioUrl);
       activeAudioElement = audio;
       if (onStart) onStart();
-      audio.onplay = () => onStart && onStart();
+      audio.onplay = () => { if (onStart) onStart(); };
       audio.onended = () => {
         activeAudioElement = null;
         if (onDone) onDone();
@@ -179,43 +185,81 @@ export const speakConfirmation = async ({
     }
   }
 
-  // 2. React Native mobile (Android & iOS) via expo-audio
+  // 2. React Native (Android / iOS)
   try {
-    const audioUrl = `https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=${cleanLang}&q=${encodeURIComponent(text)}`;
-    if (onStart) onStart();
+    const { createAudioPlayer, setAudioModeAsync } = require('expo-audio');
 
-    const { createAudioPlayer } = require('expo-audio');
-    const player = createAudioPlayer(audioUrl);
+    try {
+      await setAudioModeAsync({
+        playsInSilentMode: true,
+      });
+    } catch (_) {}
+
+    const player = createAudioPlayer({ uri: audioUrl });
     activePlayer = player;
+
+    if (onStart) onStart();
     player.play();
 
+    let startedPlaying = false;
     let finished = false;
-    const interval = setInterval(() => {
-      try {
-        if (!player || player.playing === false) {
-          if (!finished) {
-            finished = true;
-            clearInterval(interval);
-            activePlayer = null;
-            if (onDone) onDone();
-          }
-        }
-      } catch (_) {
-        clearInterval(interval);
-      }
-    }, 400);
 
-    // Timeout de sécurité (max 10s)
-    setTimeout(() => {
-      clearInterval(interval);
+    const finishPlayback = () => {
       if (!finished) {
         finished = true;
+        if (activeTimer) {
+          clearInterval(activeTimer);
+          activeTimer = null;
+        }
+        if (activeSubscription && typeof activeSubscription.remove === 'function') {
+          try { activeSubscription.remove(); } catch (_) {}
+          activeSubscription = null;
+        }
         activePlayer = null;
         if (onDone) onDone();
       }
-    }, 10000);
+    };
+
+    if (typeof player.addListener === 'function') {
+      activeSubscription = player.addListener('playbackStatusUpdate', (status) => {
+        if (!status) return;
+        if (status.playbackState === 'playing') {
+          startedPlaying = true;
+        } else if (
+          startedPlaying &&
+          (status.playbackState === 'paused' ||
+            status.playbackState === 'stopped' ||
+            status.playbackState === 'ended' ||
+            (status.duration > 0 && status.currentTime >= status.duration - 0.2))
+        ) {
+          finishPlayback();
+        }
+      });
+    }
+
+    // Polling de contrôle (ne coupe QUE si la lecture a bien commencé puis s'est arrêtée)
+    activeTimer = setInterval(() => {
+      try {
+        if (!player) {
+          finishPlayback();
+          return;
+        }
+        if (player.playing) {
+          startedPlaying = true;
+        } else if (startedPlaying && !player.playing && !player.isBuffering) {
+          finishPlayback();
+        }
+      } catch (_) {
+        finishPlayback();
+      }
+    }, 500);
+
+    // Timeout de sécurité max 14s
+    setTimeout(() => {
+      finishPlayback();
+    }, 14000);
   } catch (err) {
-    if (__DEV__) console.log('Erreur lecture audio:', err);
+    if (__DEV__) console.log('Erreur expo-audio:', err);
     if (onError) onError(err);
   }
 };

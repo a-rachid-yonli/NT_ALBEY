@@ -150,7 +150,9 @@ export default function RecentNumbersBar({
               key={item.phone}
               style={styles.bubbleItem}
               onPress={() => {
-                triggerSelectionHaptic();
+                try {
+                  if (typeof triggerSelectionHaptic === 'function') triggerSelectionHaptic();
+                } catch (_) {}
                 if (typeof onSelectNumber === 'function') {
                   onSelectNumber(item.phone, item.label);
                 }

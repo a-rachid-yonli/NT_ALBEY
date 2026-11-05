@@ -98,7 +98,9 @@ export default function VoiceAssistantButton({
   const handlePlay = async (targetLang) => {
     const langToUse = targetLang || selectedLang;
     setSelectedLang(langToUse);
-    triggerSelectionHaptic();
+    try {
+      if (typeof triggerSelectionHaptic === 'function') triggerSelectionHaptic();
+    } catch (_) {}
 
     if (isPlaying && langToUse === selectedLang) {
       // Déjà en lecture pour cette langue -> arrêt
@@ -134,7 +136,9 @@ export default function VoiceAssistantButton({
   };
 
   const handleStop = async () => {
-    triggerSelectionHaptic();
+    try {
+      if (typeof triggerSelectionHaptic === 'function') triggerSelectionHaptic();
+    } catch (_) {}
     await stopVoice();
     setIsPlaying(false);
     setSpokenText('');
