@@ -203,19 +203,19 @@ export function buildVoiceConfirmationText({
 
     switch (type) {
       case 'shop_credit_self':
-        return `Tabbatar da sayen katin waya. Za ku saka kudi ${haoussaAmount} na katin waya a wayarku.`;
+        return `Tabbatar da sayen katin waya. Za ku saka kudi ${haoussaAmount} a layinku na Niger Telecoms.`;
       case 'shop_credit_other': {
         const phonePairsHa = formatPhoneByPairs(recipientPhone, 'ha');
-        return `Tabbatar da sayen katin waya. Za ku tura kudi ${haoussaAmount} na katin waya ga lamba ${phonePairsHa || recipientPhone}.`;
+        return `Tabbatar da sayen katin waya. Za ku tura kudi ${haoussaAmount} na katin waya ga layin ${phonePairsHa || recipientPhone}.`;
       }
       case 'shop_softphone': {
         const phonePairsHa = formatPhoneByPairs(recipientPhone, 'ha');
-        return `Tabbatar da caji. Za ku tura kudi ${haoussaAmount} na Softphone ga lamba ${phonePairsHa || recipientPhone}.`;
+        return `Tabbatar da kudin Softphone. Za ku tura kudi ${haoussaAmount} domin sabunta layin ${phonePairsHa || recipientPhone}.`;
       }
       case 'shop_stock':
-        return `Tabbatar da sayen jari. Za ku sayi jarin katin waya na kudi ${haoussaAmount}.`;
+        return `Tabbatar da sayen jarin katin waya. Za ku sayi jarin kudi ${haoussaAmount}.`;
       case 'shop_blr':
-        return `Tabbatar da biyan kudin intanet na BLR. Za ku biya kudi ${haoussaAmount} don lambar ${recipientPhone || 'BLR'}.`;
+        return `Tabbatar da biyan kudin intanet na BLR. Za ku biya kudi ${haoussaAmount} domin sabunta intanet mai lamba ${recipientPhone || 'BLR'}.`;
       case 'shop':
         return `Tabbatar da sayayya. Za ku biya kudi ${haoussaAmount}.`;
       case 'transfer_agency': {
@@ -225,15 +225,15 @@ export function buildVoiceConfirmationText({
           ? `${targetName}, ${phonePart}`
           : (targetName || phonePart || 'abokin ciniki');
         const locPart = location ? `na ${location}` : '';
-        return `Tabbatar da aikawa. Za ku tura kudi ${haoussaAmount} don amsa a ofishin Niger Telecoms ${locPart ? locPart + ' ' : ''}ga ${who}.`;
+        return `Tabbatar da tura kudi. Za ku tura kudi ${haoussaAmount} domin karba a ofishin Niger Telecoms ${locPart ? locPart + ' ' : ''}ga ${who}.`;
       }
       case 'withdraw': {
         const locPart = location ? `na ${location}` : '';
-        return `Tabbatar da cire kudi. Za ku cire kudi ${haoussaAmount} a ofishin Niger Telecoms${locPart ? ' na ' + location : ''}.`;
+        return `Tabbatar da cire kudi. Za ku cire kudi ${haoussaAmount} tsaba a ofishin Niger Telecoms${locPart ? ' na ' + location : ''}.`;
       }
       case 'transfer_p2p':
       default:
-        return `Tabbatar da aikawa. Za ku tura kudi ${haoussaAmount} ga ${targetName || recipientPhone || 'abokin ciniki'}.`;
+        return `Tabbatar da tura kudi. Za ku tura kudi ${haoussaAmount} ga ${targetName || recipientPhone || 'abokin ciniki'}.`;
     }
   }
 
@@ -327,7 +327,8 @@ export const speakConfirmation = async ({
   await stopVoice();
 
   const cleanLang = lang === 'ha' ? 'ha' : 'fr';
-  const audioUrl = `https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=${cleanLang}&q=${encodeURIComponent(text)}`;
+  // 🎙️ Utilisation du pipeline vocal neural optimisé (client=gtx) avec rendu haute fidélité
+  const audioUrl = `https://translate.google.com/translate_tts?ie=UTF-8&client=gtx&tl=${cleanLang}&q=${encodeURIComponent(text)}`;
 
   // 1. Web
   if (Platform.OS === 'web' && typeof window !== 'undefined') {
