@@ -158,7 +158,7 @@ export default function AppLockOverlay() {
       const result = await LocalAuthentication.authenticateAsync({
         promptMessage: t('appLock.biometricPrompt'),
         fallbackLabel: t('common.usePin'),
-        disableDeviceFallback: false,
+        disableDeviceFallback: true,
       });
 
       if (result.success) {

@@ -126,7 +126,7 @@ export default function BillsScreen({ navigation }) {
       const result = await LocalAuthentication.authenticateAsync({
         promptMessage: t('bills.biometricPrompt') || 'Confirmez le paiement de la facture avec votre empreinte',
         fallbackLabel: t('common.usePin'),
-        disableDeviceFallback: false,
+        disableDeviceFallback: true,
       });
       if (result.success) {
         executePayment();

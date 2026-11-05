@@ -189,7 +189,7 @@ export default function PaymentScreen({ navigation }) {
       const result = await LocalAuthentication.authenticateAsync({
         promptMessage: t('payment.biometricPrompt') || 'Confirmez le paiement avec votre empreinte',
         fallbackLabel: t('common.usePin'),
-        disableDeviceFallback: false,
+        disableDeviceFallback: true,
       });
 
       if (result.success) {

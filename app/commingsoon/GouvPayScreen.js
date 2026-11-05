@@ -179,7 +179,7 @@ export default function GouvPayScreen({ navigation }) {
       const result = await LocalAuthentication.authenticateAsync({
         promptMessage: 'Confirmez le paiement avec votre empreinte',
         fallbackLabel: 'Utiliser mon code PIN',
-        disableDeviceFallback: false,
+        disableDeviceFallback: true,
       });
       if (result.success) {
         executePayment();

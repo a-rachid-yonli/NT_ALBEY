@@ -228,7 +228,7 @@ function LoginScreen({ navigation }) {
       const result = await LocalAuthentication.authenticateAsync({
         promptMessage: 'Authentification par empreinte digitale',
         fallbackLabel: t('common.usePin'),
-        disableDeviceFallback: false,
+        disableDeviceFallback: true,
       });
 
       if (result.success) {

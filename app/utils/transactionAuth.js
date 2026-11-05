@@ -61,7 +61,7 @@ export const verifyTransactionAuth = async (method, pin = null) => {
     const result = await LocalAuthentication.authenticateAsync({
       promptMessage: 'Confirmez l\'opération avec votre empreinte',
       fallbackLabel: 'Utiliser mon mot de passe',
-      disableDeviceFallback: false,
+      disableDeviceFallback: true,
     });
 
     if (!result.success) {

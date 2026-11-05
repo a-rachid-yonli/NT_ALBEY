@@ -178,7 +178,7 @@ export default function SavingsScreen({ navigation }) {
       const result = await LocalAuthentication.authenticateAsync({
         promptMessage: t('savings.biometricPrompt') || 'Confirmez l\'opération d\'épargne avec votre empreinte',
         fallbackLabel: t('common.usePin'),
-        disableDeviceFallback: false,
+        disableDeviceFallback: true,
       });
 
       if (result.success) {

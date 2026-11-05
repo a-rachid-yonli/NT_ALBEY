@@ -262,7 +262,7 @@ export default function CashInScreen({ navigation }) {
       const result = await LocalAuthentication.authenticateAsync({
         promptMessage: 'Confirmez l\'encaissement avec votre empreinte',
         fallbackLabel: 'Utiliser mon code PIN',
-        disableDeviceFallback: false,
+        disableDeviceFallback: true,
       });
 
       console.log('🔐 [CashIn] Résultat biométrie :', result.success);

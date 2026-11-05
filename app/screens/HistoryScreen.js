@@ -484,14 +484,58 @@ export default function HistoryScreen({ navigation }) {
 
       let senderWallet = null;
       let receiverWallet = null;
-      if (fullTx?.sender_wallet_id) {
-        try { senderWallet = await API.getWalletById(fullTx.sender_wallet_id); } catch (e) {}
+      let senderCustomerName = null;
+      let receiverCustomerName = null;
+
+      const d = transaction?.details || {};
+      const sWalletId = fullTx?.sender_wallet_id || d.sender_wallet_id;
+      const rWalletId = fullTx?.receiver_wallet_id || d.receiver_wallet_id;
+
+      if (sWalletId) {
+        try { senderWallet = await API.getWalletById(sWalletId); } catch (e) {}
       }
-      if (fullTx?.receiver_wallet_id) {
-        try { receiverWallet = await API.getWalletById(fullTx.receiver_wallet_id); } catch (e) {}
+      if (rWalletId) {
+        try { receiverWallet = await API.getWalletById(rWalletId); } catch (e) {}
       }
 
-      setEnrichedTx({ fullTx, senderWallet, receiverWallet, uuid });
+      const effSenderPhone = cleanPhone(meta?.sender_phone) ||
+        cleanPhone(fullTx?.sender_phone) ||
+        cleanPhone(senderWallet?.wallet_number || senderWallet?.phone_number || senderWallet?.phone) ||
+        cleanPhone(d.sender_phone || d.sender);
+
+      const effReceiverPhone = cleanPhone(meta?.receiver_phone) ||
+        cleanPhone(fullTx?.receiver_phone) ||
+        cleanPhone(receiverWallet?.wallet_number || receiverWallet?.phone_number || receiverWallet?.phone) ||
+        cleanPhone(d.receiver_phone || d.phone || d.beneficiary);
+
+      if (effSenderPhone && !meta?.sender_name) {
+        try {
+          const cust = await API.searchCustomerByPhone(effSenderPhone);
+          if (cust) {
+            senderCustomerName = cust.name || cust.full_name || `${cust.first_name || ''} ${cust.last_name || ''}`.trim() || null;
+          }
+        } catch (e) {}
+      }
+
+      if (effReceiverPhone && !meta?.receiver_name) {
+        try {
+          const cust = await API.searchCustomerByPhone(effReceiverPhone);
+          if (cust) {
+            receiverCustomerName = cust.name || cust.full_name || `${cust.first_name || ''} ${cust.last_name || ''}`.trim() || null;
+          }
+        } catch (e) {}
+      }
+
+      setEnrichedTx({
+        fullTx,
+        senderWallet,
+        receiverWallet,
+        senderPhone: effSenderPhone,
+        receiverPhone: effReceiverPhone,
+        senderCustomerName,
+        receiverCustomerName,
+        uuid,
+      });
       if (__DEV__) console.log('✅ [History] Enrichissement terminé');
     } catch (e) {
       if (__DEV__) console.log('❌ [History] Erreur enrichissement:', e?.message);
@@ -533,23 +577,23 @@ export default function HistoryScreen({ navigation }) {
     const walletSenderPhone   = cleanPhone(senderWallet?.wallet_number);
     const walletReceiverPhone = cleanPhone(receiverWallet?.wallet_number);
 
-    const senderPhone   = cachedSenderPhone   || walletSenderPhone   || null;
-    const receiverPhone = cachedReceiverPhone || walletReceiverPhone || null;
+    const senderPhone   = cachedSenderPhone   || cleanPhone(enrichedTx?.senderPhone)   || walletSenderPhone   || null;
+    const receiverPhone = cachedReceiverPhone || cleanPhone(enrichedTx?.receiverPhone) || walletReceiverPhone || null;
 
-    // ─── Noms depuis le cache ─────────────────────────────────
-    const cachedSenderName   = cachedMeta?.sender_name   || null;
-    const cachedReceiverName = cachedMeta?.receiver_name || null;
+    // ─── Noms depuis le cache ou enrichissement ───────────────
+    const cachedSenderName   = cachedMeta?.sender_name   || enrichedTx?.senderCustomerName   || null;
+    const cachedReceiverName = cachedMeta?.receiver_name || enrichedTx?.receiverCustomerName || null;
 
     if (__DEV__) {
       console.log('📱 [History] Participantes:');
-      console.log('   cached sender   :', cachedSenderName, cachedSenderPhone);
-      console.log('   cached receiver :', cachedReceiverName, cachedReceiverPhone);
+      console.log('   cached sender   :', cachedSenderName, senderPhone);
+      console.log('   cached receiver :', cachedReceiverName, receiverPhone);
       console.log('   wallet sender   :', walletSenderPhone);
       console.log('   wallet receiver :', walletReceiverPhone);
     }
 
     // ═══════════════════════════════════════════════════════════
-    // ✅ DÉTECTION DU TYPE RÉEL
+    // ✅ DÉTECTION DU TYPE RÉEL SANS CONFUSION
     // ═══════════════════════════════════════════════════════════
     const frontType      = selectedTransaction.type || null;
     const rawEntryType   = d.entry_type || null;
@@ -557,16 +601,26 @@ export default function HistoryScreen({ navigation }) {
 
     const allTypes = [frontType, rawEntryType, rawTransType].filter(Boolean);
 
+    // 1. Dépôt guichet : de l'agence vers mon wallet
     const isDeposit = allTypes.some(t =>
-      t === 'cashin' || t === 'bank_to_wallet'
+      t === 'cashin' || t === 'depot' || t === 'bank_to_wallet'
     );
+
+    // 2. Retrait guichet / Envoi à moi-même : de mon wallet vers l'agence
     const isWithdrawal = allTypes.some(t =>
-      t === 'cashout' || t === 'withdraw' || t === 'wallet_to_bank'
+      t === 'cashout' || t === 'withdraw' || t === 'wallet_to_bank' || t === 'self-send'
     );
-    // ✅ v4 : transfert guichet
+
+    // 3. Transfert guichet pour un tiers : retrait en agence avec code
+    // ⚠️ NE PAS inclure 'transfer' ici !
     const isAgencyTransfer = allTypes.some(t =>
-      t === 'transferAgency' || t === 'transfer' || t === 'transfert'
+      t === 'transferAgency' || t === 'transfert'
     );
+
+    // 4. Transfert compte à compte (P2P wallet à wallet)
+    const isP2PTransfer = (
+      allTypes.some(t => t === 'compte_compte' || t === 'comte_compte' || t === 'transfer')
+    ) && !isAgencyTransfer && !isDeposit && !isWithdrawal;
 
     const isSend = selectedTransaction.amount < 0;
     const isReceive = selectedTransaction.amount > 0;
@@ -585,61 +639,80 @@ export default function HistoryScreen({ navigation }) {
     let receiverIsPhone = false;
 
     if (isDeposit) {
-      // 🏦 Dépôt guichet : DE = Guichet NT Albey, À = moi
+      // 🏦 Dépôt guichet : DE = Guichet NT Albey, À = mon wallet
       senderName = 'Guichet NT Albey';
       senderPhoneDisplay = null;
       senderIsPhone = false;
 
-      receiverName = fallbackHolder;
+      receiverName = currentUserName || fallbackHolder;
       receiverPhoneDisplay = currentUserPhone || null;
       receiverIsPhone = !!currentUserPhone;
     } else if (isWithdrawal) {
-      // 🏦 Retrait guichet : DE = moi, À = Guichet NT Albey
-      senderName = fallbackHolder;
+      // 🏦 Retrait guichet (Envoi à moi-même) : DE = mon wallet, À = Guichet NT Albey
+      senderName = currentUserName || fallbackHolder;
       senderPhoneDisplay = currentUserPhone || null;
       senderIsPhone = !!currentUserPhone;
 
-      receiverName = 'Guichet NT Albey';
+      receiverName = 'Guichet NT Albey (Retrait personnel)';
       receiverPhoneDisplay = null;
       receiverIsPhone = false;
-    } else if (isAgencyTransfer && isSend) {
-      // 🏦 Transfert guichet envoyé : DE = moi, À = bénéficiaire guichet
-      senderName = cachedSenderName || currentUserName || 'Moi';
-      senderPhoneDisplay = cachedSenderPhone || currentUserPhone || null;
-      senderIsPhone = !!senderPhoneDisplay;
+    } else if (isAgencyTransfer) {
+      // 🏦 Transfert au guichet pour un tiers
+      if (isSend) {
+        senderName = currentUserName || cachedSenderName || 'Moi';
+        senderPhoneDisplay = currentUserPhone || cachedSenderPhone || null;
+        senderIsPhone = !!senderPhoneDisplay;
 
-      receiverName = cachedReceiverName || d.beneficiary || 'Bénéficiaire guichet';
-      receiverPhoneDisplay = receiverPhone || null;
-      receiverIsPhone = !!receiverPhone;
-    } else if (isAgencyTransfer && isReceive) {
-      // 🏦 Transfert guichet reçu : DE = expéditeur, À = moi
-      senderName = cachedSenderName || 'Expéditeur guichet';
-      senderPhoneDisplay = senderPhone;
-      senderIsPhone = !!senderPhone;
+        receiverName = cachedReceiverName || d.beneficiary || (receiverPhone ? `+227 ${receiverPhone}` : 'Bénéficiaire guichet');
+        receiverPhoneDisplay = receiverPhone || null;
+        receiverIsPhone = !!receiverPhone;
+      } else {
+        senderName = cachedSenderName || 'Expéditeur guichet';
+        senderPhoneDisplay = senderPhone;
+        senderIsPhone = !!senderPhone;
 
-      receiverName = cachedReceiverName || currentUserName || 'Moi';
-      receiverPhoneDisplay = cachedReceiverPhone || currentUserPhone || receiverPhone || null;
-      receiverIsPhone = !!receiverPhoneDisplay;
+        receiverName = currentUserName || cachedReceiverName || fallbackHolder;
+        receiverPhoneDisplay = currentUserPhone || cachedReceiverPhone || null;
+        receiverIsPhone = !!receiverPhoneDisplay;
+      }
+    } else if (isP2PTransfer || frontType === 'transfer') {
+      // 📤 / 📥 Transfert Compte à Compte (Wallet à Wallet) - AUCUNE mention de guichet ici !
+      if (isSend) {
+        // Envoi compte à compte : DE = moi, À = destinataire
+        senderName = currentUserName || cachedSenderName || 'Moi';
+        senderPhoneDisplay = currentUserPhone || cachedSenderPhone || null;
+        senderIsPhone = !!senderPhoneDisplay;
+
+        receiverName = cachedReceiverName || d.beneficiary || (receiverPhone ? `+227 ${receiverPhone}` : 'Bénéficiaire');
+        receiverPhoneDisplay = receiverPhone || null;
+        receiverIsPhone = !!receiverPhone;
+      } else {
+        // Réception compte à compte : DE = l'ami qui m'a envoyé, À = moi
+        senderName = cachedSenderName || d.sender || (senderPhone ? `+227 ${senderPhone}` : 'Expéditeur');
+        senderPhoneDisplay = senderPhone;
+        senderIsPhone = !!senderPhone;
+
+        receiverName = currentUserName || cachedReceiverName || fallbackHolder;
+        receiverPhoneDisplay = currentUserPhone || cachedReceiverPhone || null;
+        receiverIsPhone = !!receiverPhoneDisplay;
+      }
     } else if (isSend) {
-      // 📤 J'envoie : DE = moi, À = destinataire
-      senderName = cachedSenderName || currentUserName || 'Moi';
-      senderPhoneDisplay = cachedSenderPhone || currentUserPhone || null;
+      senderName = currentUserName || cachedSenderName || 'Moi';
+      senderPhoneDisplay = currentUserPhone || cachedSenderPhone || null;
       senderIsPhone = !!senderPhoneDisplay;
 
       receiverName = cachedReceiverName || d.beneficiary || 'Bénéficiaire';
       receiverPhoneDisplay = receiverPhone || null;
       receiverIsPhone = !!receiverPhone;
-    } else if (isReceive && (senderPhone || receiverPhone)) {
-      // 📥 Je reçois : DE = expéditeur, À = moi
-      senderName = cachedSenderName || 'Expéditeur';
+    } else if (isReceive) {
+      senderName = cachedSenderName || d.sender || (senderPhone ? `+227 ${senderPhone}` : 'Expéditeur');
       senderPhoneDisplay = senderPhone;
       senderIsPhone = !!senderPhone;
 
-      receiverName = cachedReceiverName || currentUserName || 'Moi';
-      receiverPhoneDisplay = cachedReceiverPhone || currentUserPhone || receiverPhone || null;
+      receiverName = currentUserName || cachedReceiverName || fallbackHolder;
+      receiverPhoneDisplay = currentUserPhone || cachedReceiverPhone || null;
       receiverIsPhone = !!receiverPhoneDisplay;
     } else {
-      // Fallback générique
       senderName = cachedSenderName || currentUserName || 'Mon compte';
       senderPhoneDisplay = senderPhone || currentUserPhone || null;
       senderIsPhone = !!senderPhoneDisplay;

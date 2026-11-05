@@ -154,7 +154,7 @@ export default function VisaScreen({ navigation, onLogout }) {
       const result = await LocalAuthentication.authenticateAsync({
         promptMessage: t('visa.biometricPrompt') || 'Confirmez la recharge avec votre empreinte',
         fallbackLabel: t('common.usePin'),
-        disableDeviceFallback: false,
+        disableDeviceFallback: true,
       });
 
       if (result.success) {

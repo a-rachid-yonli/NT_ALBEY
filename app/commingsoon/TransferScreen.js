@@ -127,7 +127,7 @@ export default function TransferScreen({ navigation }) {
       const result = await LocalAuthentication.authenticateAsync({
         promptMessage: t('transfer.biometricPrompt') || 'Confirmez le transfert avec votre empreinte',
         fallbackLabel: t('common.usePin'),
-        disableDeviceFallback: false,
+        disableDeviceFallback: true,
       });
 
       if (result.success) {

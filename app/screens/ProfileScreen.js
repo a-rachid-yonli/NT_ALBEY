@@ -600,7 +600,7 @@ export default function ProfileScreen({ navigation, onLogout }) {
           result = await LocalAuthentication.authenticateAsync({
             promptMessage: 'Confirmez votre identité pour activer la connexion par empreinte',
             fallbackLabel: 'Utiliser mon PIN',
-            disableDeviceFallback: false,
+            disableDeviceFallback: true,
           });
         } catch (authErr) {
           if (__DEV__) console.log('⚠️ [Bio] Erreur authenticateAsync :', authErr?.message);
