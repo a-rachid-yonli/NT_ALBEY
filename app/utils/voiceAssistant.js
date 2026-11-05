@@ -201,6 +201,22 @@ export function buildVoiceConfirmationText({
     const targetName = recipientName && !recipientName.startsWith('+227') ? recipientName : '';
 
     switch (type) {
+      case 'shop_credit_self':
+        return `Tabbatar da sayen katin waya. Za ku saka kudin CFA ${haoussaAmount} na katin waya a wayarku.`;
+      case 'shop_credit_other': {
+        const phonePairsHa = formatPhoneByPairs(recipientPhone, 'ha');
+        return `Tabbatar da sayen katin waya. Za ku tura kudin CFA ${haoussaAmount} na katin waya ga lamba ${phonePairsHa || recipientPhone}.`;
+      }
+      case 'shop_softphone': {
+        const phonePairsHa = formatPhoneByPairs(recipientPhone, 'ha');
+        return `Tabbatar da caji. Za ku tura kudin CFA ${haoussaAmount} na Softphone ga lamba ${phonePairsHa || recipientPhone}.`;
+      }
+      case 'shop_stock':
+        return `Tabbatar da sayen jari. Za ku sayi jarin katin waya na CFA ${haoussaAmount}.`;
+      case 'shop_blr':
+        return `Tabbatar da biyan kudin intanet na BLR. Za ku biya kudin CFA ${haoussaAmount} don lambar ${recipientPhone || 'BLR'}.`;
+      case 'shop':
+        return `Tabbatar da sayayya. Za ku biya kudin CFA ${haoussaAmount}.`;
       case 'transfer_agency': {
         const phonePairsHa = formatPhoneByPairs(recipientPhone, 'ha');
         const phonePart = phonePairsHa ? `lamba ${phonePairsHa}` : '';
@@ -220,6 +236,22 @@ export function buildVoiceConfirmationText({
   // Français
   const formattedAmount = numericVal.toLocaleString('fr-FR');
   switch (type) {
+    case 'shop_credit_self':
+      return `Confirmation d'achat de crédit. Vous allez recharger ${formattedAmount} Francs CFA de crédit de communication sur votre ligne.`;
+    case 'shop_credit_other': {
+      const phonePairsFr = formatPhoneByPairs(recipientPhone, 'fr');
+      return `Confirmation de recharge de crédit. Vous allez envoyer ${formattedAmount} Francs CFA de crédit au numéro ${phonePairsFr || recipientPhone}.`;
+    }
+    case 'shop_softphone': {
+      const phonePairsFr = formatPhoneByPairs(recipientPhone, 'fr');
+      return `Confirmation de recharge Softphone. Vous allez envoyer ${formattedAmount} Francs CFA au numéro ${phonePairsFr || recipientPhone}.`;
+    }
+    case 'shop_stock':
+      return `Confirmation d'achat de stock. Vous allez acheter ${formattedAmount} Francs CFA de stock de crédit.`;
+    case 'shop_blr':
+      return `Confirmation de réabonnement BLR. Vous allez payer ${formattedAmount} Francs CFA pour l'abonnement numéro ${recipientPhone}.`;
+    case 'shop':
+      return `Confirmation d'achat. Vous allez payer ${formattedAmount} Francs CFA pour ${recipientName || 'votre commande'}.`;
     case 'transfer_agency': {
       const phonePairsFr = formatPhoneByPairs(recipientPhone, 'fr');
       const targetName = recipientName && !recipientName.startsWith('+227') ? recipientName : '';

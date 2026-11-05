@@ -39,6 +39,7 @@ import { useTransactions } from '../context/TransactionContext';
 import { API } from '../services/api';
 import { pickPhoneContact } from '../utils/contactPicker';
 import RecentNumbersBar, { saveRecentNumber } from '../components/RecentNumbersBar';
+import VoiceAssistantButton from '../components/VoiceAssistantButton';
 import { triggerSuccessHaptic } from '../utils/haptics';
 import {
   verifyTransactionAuth,
@@ -1209,6 +1210,42 @@ export default function ShopScreen({ navigation }) {
     return false;
   };
 
+  const getVoiceType = () => {
+    if (selectedProduct) {
+      if (selectedProduct.isBLRResubscribe) return 'shop_blr';
+      if (selectedProduct.isStock) return 'shop_stock';
+      if (selectedProduct.isSoftphone) return 'shop_softphone';
+      if (selectedProduct.isForOther) return 'shop_credit_other';
+      return 'shop_credit_self';
+    }
+    if (selectedCategory === 'blr') return 'shop_blr';
+    if (selectedCategory === 'stock') return 'shop_stock';
+    if (selectedCategory === 'softphone') return 'shop_softphone';
+    if (selectedCategory === 'credit') {
+      return airtimeRecipientType === 'other' ? 'shop_credit_other' : 'shop_credit_self';
+    }
+    return 'shop';
+  };
+
+  const getVoiceAmount = () => {
+    if (selectedProduct?.finalAmount) return selectedProduct.finalAmount;
+    if (selectedCategory === 'stock') return Number(stockAmount) || 0;
+    if (selectedCategory === 'credit') return Number(airtimeAmount) || 0;
+    if (selectedCategory === 'softphone') return Number(softphoneAmount) || 0;
+    if (selectedCategory === 'blr') return Number(blrResult?.prix) || 0;
+    return 0;
+  };
+
+  const getVoicePhone = () => {
+    if (selectedProduct) {
+      return selectedProduct.phoneNumber || selectedProduct.blrNumber || '';
+    }
+    if (selectedCategory === 'credit' && airtimeRecipientType === 'other') return airtimeTargetPhone;
+    if (selectedCategory === 'softphone') return softphoneTargetPhone;
+    if (selectedCategory === 'blr') return blrResult?.numeroBlr || cleanBlrNumber(blrNumber) || '';
+    return '';
+  };
+
   const handleCategoryCta = () => {
     if (selectedCategory === 'stock') return handleBuyStock();
     if (selectedCategory === 'credit') return handleBuyAirtime();
@@ -1697,6 +1734,17 @@ export default function ShopScreen({ navigation }) {
           </>
         )}
 
+        {/* 🎙️ ASSISTANCE VOCALE SUR LE FORMULAIRE (uniquement quand tous les champs sont remplis) */}
+        {(isCategoryCtaReady() || (selectedCategory === 'blr' && !!blrResult)) && !pinRequired && (
+          <VoiceAssistantButton
+            type={getVoiceType()}
+            amount={getVoiceAmount()}
+            recipientPhone={getVoicePhone()}
+            recipientName={selectedProduct?.name || ''}
+            containerStyle={{ marginTop: 18, marginBottom: 8 }}
+          />
+        )}
+
       </ScrollView>
 
       {/* ═══════════ CTA FIXE EN BAS (Stock / Crédit / Softphone) ═══════════ */}
@@ -1821,9 +1869,25 @@ export default function ShopScreen({ navigation }) {
                 </View>
               )}
 
+              {/* 🎙️ ASSISTANCE VOCALE DANS LE MODAL DE CONFIRMATION */}
+              <VoiceAssistantButton
+                type={getVoiceType()}
+                amount={getVoiceAmount()}
+                recipientPhone={getVoicePhone()}
+                recipientName={selectedProduct?.name || ''}
+                containerStyle={{ marginTop: 12, marginBottom: 8 }}
+              />
+
               {/* PIN inline */}
               {pinRequired && (
                 <View style={styles.pinInline}>
+                  <VoiceAssistantButton
+                    type={getVoiceType()}
+                    amount={getVoiceAmount()}
+                    recipientPhone={getVoicePhone()}
+                    recipientName={selectedProduct?.name || ''}
+                    containerStyle={{ marginBottom: 14, marginTop: 0 }}
+                  />
                   <View style={styles.pinInlineHeader}>
                     <Text style={styles.pinInlineLabel}>
                       {isBiometricAvailable && pinRequired
