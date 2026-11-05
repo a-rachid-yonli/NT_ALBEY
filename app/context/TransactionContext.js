@@ -39,6 +39,7 @@ const initialState = {
   isLoading: true,
   error: null,
   lastUpdatedAt: null,
+  isOfflineCache: false,
 };
 
 function reducer(state, action) {
@@ -54,6 +55,7 @@ function reducer(state, action) {
         isLoading: false,
         error: null,
         lastUpdatedAt: Date.now(),
+        isOfflineCache: !!action.isOfflineCache,
       };
 
     case SET_TRANSACTIONS:
@@ -561,6 +563,18 @@ export function TransactionProvider({ children }) {
         },
       });
 
+      // 💾 Sauvegarde du cache hors-ligne (30 dernières transactions + solde)
+      try {
+        await AsyncStorage.setItem(
+          `@ntalbey_tx_cache_${userId}`,
+          JSON.stringify({
+            wallet,
+            items: combined.slice(0, 30),
+            savedAt: Date.now(),
+          })
+        );
+      } catch (_) {}
+
       // ✅ 3️⃣ Détection des crédits entrants (backend uniquement)
       await processIncomingTransfers(mappedBackend, userId);
 
@@ -570,6 +584,22 @@ export function TransactionProvider({ children }) {
     } catch (error) {
       if (!isMountedRef.current) return;
       if (__DEV__) console.warn('⚠️ Erreur chargement :', error?.message);
+      try {
+        const cachedRaw = await AsyncStorage.getItem(`@ntalbey_tx_cache_${userId}`);
+        if (cachedRaw) {
+          const cached = JSON.parse(cachedRaw);
+          if (cached?.wallet) {
+            dispatch({ type: SET_WALLET, payload: cached.wallet, isOfflineCache: true });
+          }
+          if (Array.isArray(cached?.items)) {
+            dispatch({
+              type: SET_TRANSACTIONS,
+              payload: { items: cached.items, total: cached.items.length, _forbidden: false },
+            });
+            return;
+          }
+        }
+      } catch (_) {}
       dispatch({ type: SET_ERROR, payload: error.message });
     } finally {
       isLoadingRef.current = false;
@@ -611,6 +641,7 @@ export function TransactionProvider({ children }) {
       isLoading: state.isLoading,
       error: state.error,
       lastUpdatedAt: state.lastUpdatedAt,
+      isOfflineCache: state.isOfflineCache,
 
       refreshWallet,
       refreshData,

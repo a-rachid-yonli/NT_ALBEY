@@ -7,6 +7,7 @@ import { API } from '../services/api.js';
 import { state } from '../services/state.js';
 import { Toast } from '../components/toast.js';
 import { Modal } from '../components/modal.js';
+import { escapeHtml } from '../utils/sanitize.js';
 
 // ============================================
 // MÉTADONNÉES DES RÔLES
@@ -213,19 +214,19 @@ export async function render() {
                     <div class="user-item-content">
                         <div class="user-item-header">
                             <div class="user-item-title">
-                                <h4>${user.name}</h4>
+                                <h4>${escapeHtml(user.name)}</h4>
                                 <span class="user-item-role-badge ${meta.badge}">
-                                    <i class="fas ${meta.icon}"></i> ${meta.label}
+                                    <i class="fas ${meta.icon}"></i> ${escapeHtml(meta.label)}
                                 </span>
                                 ${isSelf ? `<span class="user-item-self-badge"><i class="fas fa-user"></i> Vous</span>` : ''}
                             </div>
                             <span class="user-item-status ${statusClass}">
                                 <i class="fas fa-circle" style="font-size:8px;color:${statusColor};"></i>
-                                ${statusText}
+                                ${escapeHtml(statusText)}
                             </span>
                         </div>
                         <div class="user-item-meta">
-                            <span><i class="fas fa-envelope"></i> ${user.email}</span>
+                            <span><i class="fas fa-envelope"></i> ${escapeHtml(user.email)}</span>
                             <span><i class="fas fa-hashtag"></i> ID #${user.id}</span>
                             <span><i class="fas fa-comment"></i> ${user.messages || 0} messages</span>
                             <span><i class="fas fa-star" style="color:#ff9800;"></i> ${user.rating || '-'}</span>
@@ -469,14 +470,14 @@ async function showEditUserModal(id) {
                     <div class="form-row">
                         <div class="form-group">
                             <label><i class="fas fa-user"></i> Nom complet</label>
-                            <input type="text" id="editUserName" value="${user.name}" required>
+                            <input type="text" id="editUserName" value="${escapeHtml(user.name)}" required>
                         </div>
                     </div>
 
                     <div class="form-row">
                         <div class="form-group">
                             <label><i class="fas fa-envelope"></i> Email</label>
-                            <input type="email" id="editUserEmail" value="${user.email}" required>
+                            <input type="email" id="editUserEmail" value="${escapeHtml(user.email)}" required>
                         </div>
                     </div>
 
@@ -566,7 +567,7 @@ async function showResetPasswordModal(id) {
                 </div>
                 <div class="modal-title-group">
                     <h2>Réinitialiser le mot de passe</h2>
-                    <p>Pour <strong>${user.name}</strong> (${user.email})</p>
+                    <p>Pour <strong>${escapeHtml(user.name)}</strong> (${escapeHtml(user.email)})</p>
                 </div>
                 <button class="modal-close" id="closeModalBtn">
                     <i class="fas fa-times"></i>

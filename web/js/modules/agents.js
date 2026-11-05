@@ -3,6 +3,7 @@ import { API } from '../services/api.js';
 import { state } from '../services/state.js';
 import { Toast } from '../components/toast.js';
 import { Modal } from '../components/modal.js';
+import { escapeHtml } from '../utils/sanitize.js';
 
 // ============================================
 // PERMISSIONS GLOBALES (exposées par app.js)
@@ -270,11 +271,11 @@ export async function render() {
                             ${initials}
                         </div>
                         <div class="agent-card-info">
-                            <div class="agent-card-name">${agent.name}</div>
-                            <div class="agent-card-email">${agent.email}</div>
+                            <div class="agent-card-name">${escapeHtml(agent.name)}</div>
+                            <div class="agent-card-email">${escapeHtml(agent.email)}</div>
                             <div class="agent-card-meta">
                                 <span class="agent-card-role ${roleMeta.badge}">
-                                    <i class="fas ${roleMeta.icon}"></i> ${roleMeta.label}
+                                    <i class="fas ${roleMeta.icon}"></i> ${escapeHtml(roleMeta.label)}
                                 </span>
                                 <span class="agent-card-id">ID: #${agent.id}</span>
                             </div>
@@ -625,14 +626,14 @@ async function showEditUserModal(id) {
                     <div class="form-row">
                         <div class="form-group">
                             <label><i class="fas fa-user"></i> Nom complet</label>
-                            <input type="text" id="editAgentName" value="${agent.name}" required>
+                            <input type="text" id="editAgentName" value="${escapeHtml(agent.name)}" required>
                         </div>
                     </div>
 
                     <div class="form-row">
                         <div class="form-group">
                             <label><i class="fas fa-envelope"></i> Email</label>
-                            <input type="email" id="editAgentEmail" value="${agent.email}" required>
+                            <input type="email" id="editAgentEmail" value="${escapeHtml(agent.email)}" required>
                         </div>
                     </div>
 
@@ -751,7 +752,7 @@ async function showResetPasswordModal(id) {
                 </div>
                 <div class="modal-title-group">
                     <h2>Réinitialiser le mot de passe</h2>
-                    <p>Pour <strong>${agent.name}</strong> (${agent.email})</p>
+                    <p>Pour <strong>${escapeHtml(agent.name)}</strong> (${escapeHtml(agent.email)})</p>
                 </div>
                 <button class="modal-close" id="closeModalBtn">
                     <i class="fas fa-times"></i>

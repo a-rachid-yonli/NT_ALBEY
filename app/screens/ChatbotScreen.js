@@ -5,22 +5,16 @@
 // ✅ FIX v3 : filigrane NT Albey en arrière-plan de la zone messages
 import React, { useState, useRef, useEffect } from 'react';
 import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
   StyleSheet,
-  ScrollView,
-  KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
-  Alert,
   Image,
   useWindowDimensions,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path, Circle, Rect } from 'react-native-svg';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useTranslation } from '../context/LanguageContext';
+import { useTranslation, TranslatedText as Text, TranslatedTextInput as TextInput, TranslatedAlert as Alert, ThemedView as View, ThemedTouchableOpacity as TouchableOpacity, ThemedScrollView as ScrollView, ThemedKeyboardAvoidingView as KeyboardAvoidingView } from '../context/LanguageContext';
 import { API } from '../services/api';
 import {
   initSocket,
@@ -117,6 +111,24 @@ const getChatbotResponses = (t) => ({
   'hello': t('chatbot.respHello') || 'Hello ! 👋 How can I help you today ?',
   'hi': t('chatbot.respHi') || 'Hi there! 👋 How can I assist you?',
   'coucou': t('chatbot.respCoucou') || 'Coucou ! 😊 Comment puis-je vous aider ?',
+  'sannu': t('chatbot.respBonjour'),
+  'foofo': t('chatbot.respBonjour'),
+  'transfer': t('chatbot.respTransfert'),
+  'aika': t('chatbot.respTransfert'),
+  'samba': t('chatbot.respTransfert'),
+  'send': t('chatbot.respEnvoyer'),
+  'withdraw': t('chatbot.respRetrait'),
+  'cire': t('chatbot.respRetrait'),
+  'account': t('chatbot.respCompte'),
+  'asusu': t('chatbot.respCompte'),
+  'kontu': t('chatbot.respCompte'),
+  'bill': t('chatbot.respFacture'),
+  'payment': t('chatbot.respPaiement'),
+  'card': t('chatbot.respCarte'),
+  'shop': t('chatbot.respBoutique'),
+  'help': t('chatbot.respAide'),
+  'taimako': t('chatbot.respAide'),
+  'faaba': t('chatbot.respAide'),
   'transfert': t('chatbot.respTransfert') || 'Pour effectuer un transfert d\'argent :\n1. Allez dans "Envoyer"\n2. Choisissez un bénéficiaire\n3. Saisissez le montant\n4. Confirmez avec votre PIN',
   'envoyer': t('chatbot.respEnvoyer') || 'Pour envoyer de l\'argent, rendez-vous dans le menu "Envoyer" sur votre page d\'accueil.',
   'retrait': t('chatbot.respRetrait') || 'Pour retirer de l\'argent :\n1. Allez dans "Retrait"\n2. Choisissez votre méthode\n3. Saisissez le montant\n4. Confirmez avec votre PIN',
@@ -264,6 +276,7 @@ const EscalationCard = ({ t, onAccept, onLater, isLoading }) => (
 // 🚀 COMPOSANT PRINCIPAL
 // ═══════════════════════════════════════════════════════════════
 export default function ChatbotScreen({ navigation }) {
+  const insets = useSafeAreaInsets();
   const { t } = useTranslation();
   const scrollViewRef = useRef();
 
@@ -312,7 +325,7 @@ export default function ChatbotScreen({ navigation }) {
           if (!isNaN(id)) setConversationId(id);
         }
       } catch (e) {
-        console.error('Erreur chargement historique chat:', e);
+        console.warn('Erreur chargement historique chat:', e);
       } finally {
         setHistoryLoaded(true);
       }
@@ -347,7 +360,7 @@ export default function ChatbotScreen({ navigation }) {
       try {
         await AsyncStorage.setItem(CHAT_HISTORY_KEY, JSON.stringify(messages));
       } catch (e) {
-        console.error('Erreur sauvegarde historique chat:', e);
+        console.warn('Erreur sauvegarde historique chat:', e);
       }
     };
     save();
@@ -359,7 +372,7 @@ export default function ChatbotScreen({ navigation }) {
       try {
         await AsyncStorage.setItem(CHAT_MODE_KEY, mode);
       } catch (e) {
-        console.error('Erreur sauvegarde mode chat:', e);
+        console.warn('Erreur sauvegarde mode chat:', e);
       }
     })();
   }, [mode, historyLoaded]);
@@ -374,7 +387,7 @@ export default function ChatbotScreen({ navigation }) {
           await AsyncStorage.removeItem(CHAT_CONV_ID_KEY);
         }
       } catch (e) {
-        console.error('Erreur sauvegarde convId:', e);
+        console.warn('Erreur sauvegarde convId:', e);
       }
     })();
   }, [conversationId, historyLoaded]);
@@ -413,7 +426,7 @@ export default function ChatbotScreen({ navigation }) {
         scrollToEnd();
       });
     } catch (e) {
-      console.error('Erreur reconnexion socket:', e);
+      console.warn('Erreur reconnexion socket:', e);
     }
   }, [historyLoaded, clientPhone, mode, conversationId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -459,8 +472,9 @@ export default function ChatbotScreen({ navigation }) {
   };
 
   // ===== ENVOI D'UN MESSAGE =====
-  const handleSend = async () => {
-    const text = inputText.trim();
+  const handleSend = async (overrideText) => {
+    const rawText = typeof overrideText === 'string' ? overrideText : inputText;
+    const text = rawText.trim();
     if (!text) return;
 
     const userMsg = {
@@ -482,7 +496,7 @@ export default function ChatbotScreen({ navigation }) {
       try {
         await sendMessageAPI(conversationId, text, [], clientName);
       } catch (e) {
-        console.error('Erreur envoi agent:', e);
+        console.warn('Erreur envoi agent:', e);
         Alert.alert('Erreur', 'Impossible d\'envoyer le message.');
       }
       return;
@@ -579,7 +593,7 @@ export default function ChatbotScreen({ navigation }) {
       ]);
       scrollToEnd();
     } catch (e) {
-      console.error('Erreur escalade:', e);
+      console.warn('Erreur escalade:', e);
       Alert.alert('Erreur', t('chatbot.transferError'));
       setMode('bot');
     } finally {
@@ -637,7 +651,7 @@ export default function ChatbotScreen({ navigation }) {
               await AsyncStorage.removeItem(CHAT_MODE_KEY);
               await AsyncStorage.removeItem(CHAT_CONV_ID_KEY);
             } catch (e) {
-              console.error('Erreur effacement historique:', e);
+              console.warn('Erreur effacement historique:', e);
             }
             setMessages([
               {
@@ -659,16 +673,15 @@ export default function ChatbotScreen({ navigation }) {
 
   // ===== SUGGESTIONS RAPIDES =====
   const quickSuggestions = [
-    { label: `💰 ${t('chatbot.sugTransfer') || 'Transfert'}`, value: 'transfert' },
-    { label: `📄 ${t('chatbot.sugBill') || 'Facture'}`, value: 'facture' },
-    { label: `👤 ${t('chatbot.sugAccount') || 'Compte'}`, value: 'compte' },
-    { label: `💳 ${t('chatbot.sugCard') || 'Carte'}`, value: 'carte' },
-    { label: `🆘 ${t('chatbot.sugHelp') || 'Aide'}`, value: 'aide' },
+    { label: `💰 ${t('chatbot.sugTransfer', 'Transfert')}`, value: 'transfert' },
+    { label: `📄 ${t('chatbot.sugBill', 'Facture')}`, value: 'facture' },
+    { label: `👤 ${t('chatbot.sugAccount', 'Compte')}`, value: 'compte' },
+    { label: `💳 ${t('chatbot.sugCard', 'Carte')}`, value: 'carte' },
+    { label: `🆘 ${t('chatbot.sugHelp', 'Aide')}`, value: 'aide' },
   ];
 
   const handleSuggestion = (value) => {
-    setInputText(value);
-    setTimeout(() => handleSend(), 100);
+    handleSend(value);
   };
 
   // ===== RENDU D'UNE BULLE =====
@@ -750,7 +763,7 @@ export default function ChatbotScreen({ navigation }) {
   return (
     <View style={styles.container}>
       {/* ═══════════ HEADER PREMIUM ═══════════ */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: Math.max(insets.top, 20) + 12 }]}>
         <TouchableOpacity
           onPress={() => navigation.goBack()}
           style={styles.backButton}
@@ -898,7 +911,7 @@ export default function ChatbotScreen({ navigation }) {
         )}
 
         {/* ═══════════ INPUT ═══════════ */}
-        <View style={styles.inputContainer}>
+        <View style={[styles.inputContainer, { paddingBottom: Math.max(insets.bottom, 12) }]}>
           <View style={styles.inputWrapper}>
             <TextInput
               style={styles.input}

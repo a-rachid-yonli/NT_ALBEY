@@ -7,15 +7,13 @@
 //    - Aucun changement dans la logique métier
 // ✅ FIX v2 : le spinner biométrique s'arrête TOUJOURS
 //    (activation réussie / annulée / erreur réseau / désactivation)
+// ✅ v3 : PIN RENFORCÉ
+//    - Import de PIN_HELPER_TEXT depuis validators.js
+//    - Texte d'aide sous les champs PIN dans le modal
+//    - Message d'erreur uniformisé
 import React, { useState, useEffect } from 'react';
 import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
   StyleSheet,
-  ScrollView,
-  Alert,
   Modal,
   Switch,
   useWindowDimensions,
@@ -30,7 +28,8 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 
 import MainLayout from '../components/MainLayout';
 import { API } from '../services/api';
-import { useTranslation } from '../context/LanguageContext';
+import { useTranslation, TranslatedText as Text, TranslatedTextInput as TextInput, TranslatedAlert as Alert, ThemedView as View, ThemedTouchableOpacity as TouchableOpacity, ThemedScrollView as ScrollView } from '../context/LanguageContext';
+import { PIN_HELPER_TEXT } from '../utils/validators';
 
 // ═══════════════════════════════════════════════════════════════
 // 🔐 SÉCURITÉ : clé SecureStore partagée avec services/api.js
@@ -567,12 +566,6 @@ export default function ProfileScreen({ navigation, onLogout }) {
 
   // ═════════════════════════════════════════════════════
   // 🔐 TOGGLE BIOMÉTRIE
-  // ✅ FIX v2 : le spinner s'arrête dans TOUS les cas :
-  //   - activation réussie
-  //   - annulation utilisateur
-  //   - erreur auth biométrique
-  //   - erreur API
-  //   - désactivation (via finally interne)
   // ═════════════════════════════════════════════════════
   const handleBiometricToggle = async (value) => {
     if (!isBiometricSupported) {
@@ -634,8 +627,6 @@ export default function ProfileScreen({ navigation, onLogout }) {
         // ═══════════════════════════════════════════════════
         // BRANCHE DÉSACTIVATION
         // ═══════════════════════════════════════════════════
-        // Note : on remet le spinner à false tout de suite
-        //        pour laisser l'Alert prendre le relais UX.
         setBiometricLoading(false);
 
         Alert.alert(
@@ -645,8 +636,6 @@ export default function ProfileScreen({ navigation, onLogout }) {
             {
               text: 'Annuler',
               style: 'cancel',
-              // Rien à faire — le switch reste à "activé" visuellement
-              // (on ne change pas l'état local)
             },
             {
               text: 'Désactiver',
@@ -671,25 +660,31 @@ export default function ProfileScreen({ navigation, onLogout }) {
             },
           ]
         );
-        return; // ✅ On sort — pas de finally sur la branche désactivation
+        return;
       }
     } catch (e) {
       if (__DEV__) console.error('❌ [Bio] Erreur toggle biométrie :', e?.message);
       Alert.alert('Erreur', 'Un problème est survenu. Veuillez réessayer.');
     } finally {
-      // ✅ GARANTIE : sur la branche ACTIVATION uniquement,
-      //    le spinner s'arrête quoi qu'il arrive.
-      //    (la branche désactivation gère son propre loading + return)
       setBiometricLoading(false);
     }
   };
 
+  // ═════════════════════════════════════════════════════
+  // 🔐 CHANGEMENT DE PIN
+  // ✅ v3 : message uniformisé via PIN_HELPER_TEXT
+  // ═════════════════════════════════════════════════════
   const handleChangePin = async () => {
+    // ✅ v3 : messages uniformisés
     if (!currentPin || currentPin.length < 8 || currentPin.length > 20) {
-      return Alert.alert('PIN actuel invalide', 'Le PIN actuel doit contenir entre 8 et 20 caractères.');
+      return Alert.alert('PIN actuel invalide', PIN_HELPER_TEXT);
     }
     if (!newPin || newPin.length < 8 || newPin.length > 20) {
-      return Alert.alert('Nouveau PIN invalide', 'Le nouveau PIN doit contenir entre 8 et 20 caractères.');
+      return Alert.alert('Nouveau PIN invalide', PIN_HELPER_TEXT);
+    }
+    // ✅ v3 : validation renforcée (lettre + chiffre)
+    if (!/[a-zA-Z]/.test(newPin) || !/\d/.test(newPin)) {
+      return Alert.alert('Nouveau PIN invalide', PIN_HELPER_TEXT);
     }
     if (newPin !== confirmPin) {
       return Alert.alert('PIN non identiques', 'Les deux PIN ne correspondent pas. Vérifiez votre saisie.');
@@ -737,7 +732,7 @@ export default function ProfileScreen({ navigation, onLogout }) {
       } else if (msg.includes('network') || msg.includes('joindre')) {
         userMessage = 'Impossible de joindre le serveur. Vérifiez votre connexion.';
       } else if (msg.includes('422')) {
-        userMessage = 'Les PIN saisis ne respectent pas les règles (8-20 caractères).';
+        userMessage = PIN_HELPER_TEXT;
       }
 
       Alert.alert('Erreur', userMessage);
@@ -1091,7 +1086,7 @@ export default function ProfileScreen({ navigation, onLogout }) {
               <View style={styles.kycLimits}>
                 <View style={styles.kycLimitItem}>
                   <Text style={styles.kycLimitLabel}>LIMITE ACTUELLE</Text>
-                  
+
                   <Text style={styles.kycLimitValue}>200 000</Text>
                   <Text style={styles.kycLimitUnit}>FCFA/jour</Text>
                 </View>
@@ -1100,7 +1095,7 @@ export default function ProfileScreen({ navigation, onLogout }) {
 
                 <View style={styles.kycLimitItem}>
                   <Text style={styles.kycLimitLabel}>APRÈS VÉRIFICATION</Text>
-                  
+
                   <Text style={[styles.kycLimitValue, { color: COLORS.primary }]}>1 000 000</Text>
                   <Text style={styles.kycLimitUnit}>FCFA/jour</Text>
                 </View>
@@ -1377,6 +1372,9 @@ export default function ProfileScreen({ navigation, onLogout }) {
                 {pinVisible ? <IconEyeOpen /> : <IconEyeClosed />}
               </TouchableOpacity>
             </View>
+
+            {/* ✅ v3 : texte d'aide PIN visible dans le modal */}
+            <Text style={styles.modalHelper}>{PIN_HELPER_TEXT}</Text>
 
             <View style={styles.modalButtons}>
               <TouchableOpacity
@@ -2094,6 +2092,17 @@ const styles = StyleSheet.create({
     padding: 8,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  // ✅ v3 : style du texte d'aide PIN
+  modalHelper: {
+    fontSize: 11,
+    color: COLORS.textMuted,
+    fontStyle: 'italic',
+    textAlign: 'center',
+    marginTop: 4,
+    marginBottom: 12,
+    lineHeight: 16,
+    fontWeight: '500',
   },
   modalButtons: {
     flexDirection: 'row',

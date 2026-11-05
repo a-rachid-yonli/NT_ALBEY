@@ -6,12 +6,11 @@
 const router = require('express').Router();
 const fs = require('fs');
 const path = require('path');
-const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 const { log } = require('../services/audit');
+const { verifyToken, requireRole } = require('../middleware/auth');
 
 const USERS_PATH = path.join(__dirname, '../data/users.json');
-const JWT_SECRET = process.env.JWT_SECRET || 'ma_super_cle_secrete';
 
 const USE_BCRYPT = true;
 const VALID_ROLES = ['super_admin', 'chef', 'agent', 'admin_systeme'];
@@ -61,38 +60,6 @@ async function hashPassword(plain) {
 function nextId(users) {
   if (users.length === 0) return 1;
   return Math.max(...users.map(u => u.id || 0)) + 1;
-}
-
-// ============================================================
-// MIDDLEWARES
-// ============================================================
-function verifyToken(req, res, next) {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
-
-  if (!token) {
-    return res.status(401).json({ error: 'Token manquant' });
-  }
-
-  try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    req.user = decoded;
-    next();
-  } catch (err) {
-    return res.status(403).json({ error: 'Token invalide ou expiré' });
-  }
-}
-
-function requireRole(...roles) {
-  return (req, res, next) => {
-    if (!req.user) {
-      return res.status(401).json({ error: 'Non authentifié' });
-    }
-    if (!roles.includes(req.user.role)) {
-      return res.status(403).json({ error: 'Accès refusé pour votre rôle' });
-    }
-    next();
-  };
 }
 
 // ============================================================

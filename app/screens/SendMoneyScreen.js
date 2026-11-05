@@ -1,30 +1,29 @@
-// screens/SendMoneyScreen.js - DÉCHIFFREMENT QR NT ALBEY + APPEL BACKEND RÉEL
-// ✅ v11 : champ "Note optionnel" entièrement retiré (étape 3 supprimée)
-// ✅ v10 : icône "Ajouter contact" retirée de l'input téléphone
-//          → à la place, prompt "⭐ Ajouter aux favoris" dans le bloc "Compte trouvé"
-// ✅ v10 : petite ⭐ dans le bloc contact sélectionné s'il n'est pas favori
-// ✅ v9  : icônes QR / Contacts collées à l'input téléphone
-// ✅ v9  : bannière frais supprimée (le calcul est déterministe)
-// ✅ v8  : FIX bouton "✓ Terminé" (standalone, sans héritage de receiptButton)
-// ✅ v6  : nom + téléphone visibles pour ÉMETTEUR et BÉNÉFICIAIRE
-import React, { useState, useEffect, useRef } from 'react';
+// screens/SendMoneyScreen.js — v20 : FIX PERMISSION CONTACTS
+// ✨ v20 :
+//    ├── Correction ouverture du répertoire (gestion canAskAgain)
+//    ├── Redirection vers les réglages si permission bloquée
+//    └── UX montant premium conservée
+// ─────────────────────────────────────────────────────────────
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
   StyleSheet,
-  ScrollView,
   Image,
-  Alert,
   Modal,
   Platform,
   Share,
+  Linking,
   useWindowDimensions,
   ActivityIndicator,
   Animated,
   Easing,
+  Keyboard,
+  Vibration,
+  PanResponder,
 } from 'react-native';
+import { TranslatedText as Text, TranslatedTextInput as TextInput, TranslatedAlert as Alert, ThemedView as View, ThemedTouchableOpacity as TouchableOpacity, ThemedScrollView as ScrollView, ThemedKeyboardAvoidingView as KeyboardAvoidingView } from '../context/LanguageContext';
+import { humanizeError } from '../utils/errorHandler';
+import RecentNumbersBar, { saveRecentNumber } from '../components/RecentNumbersBar';
 import { useRoute } from '@react-navigation/native';
 import Svg, { Path, Circle, Rect } from 'react-native-svg';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -44,9 +43,10 @@ import { parseAmount, isValidQRPayload } from '../utils/validators';
 import { isDeviceCompromised, guardSensitiveOperation } from '../utils/security';
 
 const NOTIFIED_TX_IDS_KEY = '@ntalbey_notified_tx_ids';
+const RECENT_AMOUNTS_KEY = '@ntalbey_recent_amounts_by_phone';
 
 // ═══════════════════════════════════════════════════════════════
-// 🎨 PALETTE PREMIUM
+// 🎨 PALETTE
 // ═══════════════════════════════════════════════════════════════
 const COLORS = {
   primary:      '#008933',
@@ -54,26 +54,26 @@ const COLORS = {
   primaryDark:  '#006B28',
   accent:       '#FF6600',
   accentSoft:   '#FFF3E0',
-  textPrimary:  '#0F172A',
-  textSecondary:'#64748B',
-  textMuted:    '#94A3B8',
-  border:       '#E2E8F0',
-  borderSoft:   '#F1F5F9',
+  textPrimary:  '#0B1220',
+  textSecondary:'#5A6474',
+  textMuted:    '#A0A8B4',
+  border:       '#E7EAF0',
+  borderSoft:   '#F3F5F9',
   surface:      '#FFFFFF',
-  surfaceAlt:   '#F8FAFC',
-  background:   '#F1F5F9',
+  surfaceAlt:   '#FAFBFD',
+  background:   '#FFFFFF',
   danger:       '#EF4444',
   dangerSoft:   '#FEE2E2',
   success:      '#10B981',
   successSoft:  '#D1FAE5',
   warning:      '#F59E0B',
   warningSoft:  '#FEF3C7',
-  shadow:       '#0F172A',
+  shadow:       '#0B1220',
   gold:         '#F59E0B',
 };
 
 // ============================================================
-// 🔐 DÉCHIFFREMENT DES QR CODES NT ALBEY
+// 🔐 DÉCHIFFREMENT QR
 // ============================================================
 const SECRET_KEY = 'NT@lb3y$2026#S3cur3!K3y&Ni9erT3l3c0ms';
 const QR_PREFIX = 'NTALBEY::';
@@ -115,10 +115,8 @@ const decodeQRData = (raw) => {
     const xored = b64Decode(b64);
     const decoded = xorCipher(xored, SECRET_KEY);
     const parsed = JSON.parse(decodeURIComponent(decoded));
-
     if (typeof parsed.exp !== 'number') return null;
     if (parsed.exp < Math.floor(Date.now() / 1000)) return null;
-
     return parsed;
   } catch (e) {
     return null;
@@ -130,12 +128,12 @@ const decodeQRData = (raw) => {
 // ============================================================
 const formatStatus = (status) => {
   const map = {
-    pending:    '⏳ En attente',
+    pending: '⏳ En attente',
     processing: '🔄 En cours',
-    success:    '✅ Succès',
-    failed:     '❌ Échoué',
-    expired:    '⏰ Expiré',
-    cancelled:  '🚫 Annulé',
+    success: '✅ Succès',
+    failed: '❌ Échoué',
+    expired: '⏰ Expiré',
+    cancelled: '🚫 Annulé',
   };
   return map[status] || (status ? String(status) : 'N/A');
 };
@@ -154,7 +152,6 @@ const extractRealName = (source) => {
 };
 
 const CONTACT_COLORS = ['#FF6600', '#10B981', '#3B82F6', '#8B5CF6', '#EC4899', '#06B6D4', '#F59E0B'];
-
 const pickRandomContactColor = () =>
   CONTACT_COLORS[Math.floor(Math.random() * CONTACT_COLORS.length)];
 
@@ -167,21 +164,30 @@ const buildInitials = (label) =>
     .toUpperCase()
     .slice(0, 2) || 'NT';
 
+const hapticTap = (intensity = 'light') => {
+  if (Platform.OS === 'web') return;
+  try {
+    if (intensity === 'heavy') Vibration.vibrate(20);
+    else if (intensity === 'medium') Vibration.vibrate(12);
+    else Vibration.vibrate(6);
+  } catch (_) {}
+};
+
 // ===== ICÔNES SVG =====
 const IconBack = () => (
-  <Svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-    <Path d="M15 18l-6-6 6-6" stroke={COLORS.textPrimary} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+  <Svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+    <Path d="M15 18l-6-6 6-6" stroke={COLORS.textPrimary} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
   </Svg>
 );
 
 const IconBackWhite = () => (
-  <Svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-    <Path d="M15 18l-6-6 6-6" stroke="#FFFFFF" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+  <Svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+    <Path d="M15 18l-6-6 6-6" stroke="#FFFFFF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
   </Svg>
 );
 
-const IconQR = ({ color = COLORS.primary }) => (
-  <Svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+const IconQR = ({ color = COLORS.primary, size = 20 }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Rect x="3" y="3" width="7" height="7" rx="1.5" stroke={color} strokeWidth="2" />
     <Rect x="14" y="3" width="7" height="7" rx="1.5" stroke={color} strokeWidth="2" />
     <Rect x="3" y="14" width="7" height="7" rx="1.5" stroke={color} strokeWidth="2" />
@@ -201,23 +207,16 @@ const IconFlashOff = () => (
   </Svg>
 );
 
-const IconContact = () => (
-  <Svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-    <Circle cx="12" cy="8" r="4" stroke={COLORS.primary} strokeWidth="1.8" />
-    <Path d="M5 20v-2a7 7 0 0114 0v2" stroke={COLORS.primary} strokeWidth="1.8" strokeLinecap="round" />
+const IconContact = ({ color = COLORS.primary, size = 22 }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Circle cx="12" cy="8" r="4" stroke={color} strokeWidth="1.8" />
+    <Path d="M5 20v-2a7 7 0 0114 0v2" stroke={color} strokeWidth="1.8" strokeLinecap="round" />
   </Svg>
 );
 
 const IconStar = ({ filled, color = '#FFD700' }) => (
-  <Svg width="14" height="14" viewBox="0 0 24 24" fill={filled ? color : 'none'} stroke={color} strokeWidth="1.8">
+  <Svg width="12" height="12" viewBox="0 0 24 24" fill={filled ? color : 'none'} stroke={color} strokeWidth="2">
     <Path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-  </Svg>
-);
-
-const IconClear = () => (
-  <Svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-    <Circle cx="12" cy="12" r="10" stroke={COLORS.textMuted} strokeWidth="1.8" />
-    <Path d="M8 8l8 8M16 8l-8 8" stroke={COLORS.textMuted} strokeWidth="1.8" strokeLinecap="round" />
   </Svg>
 );
 
@@ -236,15 +235,9 @@ const IconCopy = ({ color = COLORS.primary }) => (
   </Svg>
 );
 
-const IconArrowRight = () => (
-  <Svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-    <Path d="M5 12h14M12 5l7 7-7 7" stroke="#FFFFFF" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
-  </Svg>
-);
-
-const IconCheckSmall = ({ color = '#FFFFFF' }) => (
-  <Svg width="12" height="12" viewBox="0 0 24 24" fill="none">
-    <Path d="M20 6L9 17l-5-5" stroke={color} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+const IconArrowRight = ({ color = '#FFFFFF', size = 18 }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Path d="M5 12h14M12 5l7 7-7 7" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
   </Svg>
 );
 
@@ -255,17 +248,41 @@ const IconSparkle = () => (
 );
 
 const IconEyeOpen = ({ color = COLORS.primary }) => (
-  <Svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+  <Svg width="20" height="20" viewBox="0 0 24 24" fill="none">
     <Path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" stroke={color} strokeWidth="1.9" />
     <Circle cx="12" cy="12" r="3" stroke={color} strokeWidth="1.9" />
   </Svg>
 );
 
 const IconEyeClosed = ({ color = COLORS.textMuted }) => (
-  <Svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+  <Svg width="20" height="20" viewBox="0 0 24 24" fill="none">
     <Path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" stroke={color} strokeWidth="1.9" />
     <Path d="M3 3l18 18" stroke={color} strokeWidth="1.9" strokeLinecap="round" />
     <Circle cx="12" cy="12" r="3" stroke={color} strokeWidth="1.9" />
+  </Svg>
+);
+
+const IconFingerprint = ({ color = '#FFFFFF', size = 22 }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Path
+      d="M12 11v3a4 4 0 01-4 4M12 8a4 4 0 014 4v3a6 6 0 01-1 3.3M8 12a4 4 0 014-4 4 4 0 014 4v2M6.5 15.5A6 6 0 0112 6a6 6 0 015.5 3.5M4 13a8 8 0 0116 0v3"
+      stroke={color}
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </Svg>
+);
+
+const IconClose = ({ color = COLORS.textSecondary, size = 20 }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Path d="M18 6L6 18M6 6l12 12" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+  </Svg>
+);
+
+const IconWarning = ({ color = '#FFFFFF', size = 20 }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Path d="M12 9v4M12 17h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
   </Svg>
 );
 
@@ -282,7 +299,6 @@ const analyzeQRData = (raw) => {
       exp: decrypted.exp,
     };
   }
-
   try {
     const parsed = JSON.parse(raw);
     if (parsed && (parsed.type === 'ntalbey' || parsed.type === 'phone' || parsed.phone)) {
@@ -290,63 +306,173 @@ const analyzeQRData = (raw) => {
     }
     return { kind: 'json', raw, parsed };
   } catch (_) {}
-
   const cleaned = String(raw).replace(/[\s\-()]/g, '');
   if (/^\+?\d{8,15}$/.test(cleaned)) return { kind: 'phone', phone: cleaned };
   if (/^https?:\/\//i.test(raw)) return { kind: 'url', url: raw };
-
   return { kind: 'text', raw };
 };
 
+// ═══════════════════════════════════════════════════════════════
+// 🎯 COMPOSANT PRINCIPAL
+// ═══════════════════════════════════════════════════════════════
 export default function SendMoneyScreen({ navigation }) {
+  const insets = useSafeAreaInsets();
   const route = useRoute();
   const { width = 400, height = 800 } = useWindowDimensions();
 
-  const [amount, setAmount] = useState('');
-  const [manualPhone, setManualPhone] = useState('');
+  // ─── Bénéficiaire ──────────────────────────────────────
   const [selectedContact, setSelectedContact] = useState(null);
   const [contacts, setContacts] = useState([]);
   const [isLoadingContacts, setIsLoadingContacts] = useState(true);
 
-  const [qrModalVisible, setQrModalVisible] = useState(false);
-  const [qrInput, setQrInput] = useState('');
-
-  const [receiptModalVisible, setReceiptModalVisible] = useState(false);
-  const [transactionDetails, setTransactionDetails] = useState(null);
-  const [isExporting, setIsExporting] = useState(false);
-
-  const [confirmModalVisible, setConfirmModalVisible] = useState(false);
-  const [pin, setPin] = useState('');
-  const [pinVisible, setPinVisible] = useState(false);
-
-  const [isSending, setIsSending] = useState(false);
-  const [isVerifyingAuth, setIsVerifyingAuth] = useState(false);
-
-  const [isBiometricAvailable, setIsBiometricAvailable] = useState(false);
-  const [useBiometric, setUseBiometric] = useState(false);
-
+  // ─── Bottom sheet picker ───────────────────────────────
+  const [pickerVisible, setPickerVisible] = useState(false);
+  const [pickerSearch, setPickerSearch] = useState('');
+  const [manualPhone, setManualPhone] = useState('');
   const [beneficiaryCheck, setBeneficiaryCheck] = useState(null);
-  const [isVerifyingQR, setIsVerifyingQR] = useState(false);
+  const [isVerifyingContact, setIsVerifyingContact] = useState(false);
+  const sheetTranslateY = useRef(new Animated.Value(0)).current;
 
+  // ─── Notification flottante (au lieu d'Alert) ──────────
+  const [toast, setToast] = useState(null); // { type: 'error' | 'success', title, message }
+  const toastAnim = useRef(new Animated.Value(-150)).current;
+
+  // ─── Scanner QR ────────────────────────────────────────
   const [qrScannerVisible, setQrScannerVisible] = useState(false);
   const [qrTorchOn, setQrTorchOn] = useState(false);
   const [qrScanned, setQrScanned] = useState(false);
   const [qrContainerSize, setQrContainerSize] = useState({ width: 0, height: 0 });
   const [qrPermission, requestQrPermission] = useCameraPermissions();
+  const [isVerifyingQR, setIsVerifyingQR] = useState(false);
   const qrScanAnim = useRef(new Animated.Value(0)).current;
 
-  const [currentUserPhone, setCurrentUserPhone] = useState(null);
-  const [currentUserName,  setCurrentUserName]  = useState(null);
+  // ─── Montant ───────────────────────────────────────────
+  const [amount, setAmount] = useState('');
+  const [amountFocused, setAmountFocused] = useState(false);
+  const amountInputRef = useRef(null);
 
-  const { addTransaction, balance, refreshWallet } = useTransactions();
+  // ─── Auth / Envoi ──────────────────────────────────────
+  const [isSending, setIsSending] = useState(false);
+  const [isVerifyingAuth, setIsVerifyingAuth] = useState(false);
+  const [isBiometricAvailable, setIsBiometricAvailable] = useState(false);
+  const [useBiometric, setUseBiometric] = useState(false);
+
+  // ─── PIN inline (fallback) ─────────────────────────────
+  const [pinRequired, setPinRequired] = useState(false);
+  const [pin, setPin] = useState('');
+  const [pinVisible, setPinVisible] = useState(false);
+  const pinInputRef = useRef(null);
+
+  // ─── Reçu ──────────────────────────────────────────────
+  const [receiptModalVisible, setReceiptModalVisible] = useState(false);
+  const [transactionDetails, setTransactionDetails] = useState(null);
+  const [isExporting, setIsExporting] = useState(false);
+
+  // ─── User ──────────────────────────────────────────────
+  const [currentUserPhone, setCurrentUserPhone] = useState(null);
+  const [currentUserName, setCurrentUserName] = useState(null);
+
+  // ─── Montants récents par bénéficiaire ─────────────────
+  const [recentAmounts, setRecentAmounts] = useState({});
+
+  // ─── Pulse sur bénéficiaire vide ───────────────────────
+  const beneficiaryPulse = useRef(new Animated.Value(1)).current;
+  const beneficiaryPulseLoop = useRef(null);
+
+  const { balance, refreshWallet } = useTransactions();
 
   const effectiveW = qrContainerSize.width > 0 ? qrContainerSize.width : width;
   const effectiveH = qrContainerSize.height > 0 ? qrContainerSize.height : height;
-
   const QR_FRAME_SIZE = Math.min(effectiveW - 80, 260);
   const qrFrameTop = (effectiveH - QR_FRAME_SIZE) / 2;
   const qrFrameLeft = (effectiveW - QR_FRAME_SIZE) / 2;
 
+  // ═════════════════════════════════════════════════════════
+  // 🎯 TOAST PREMIUM
+  // ═════════════════════════════════════════════════════════
+  const showToast = (type, title, message) => {
+    setToast({ type, title, message: type === 'error' ? humanizeError(message) : message });
+    Animated.spring(toastAnim, {
+      toValue: 1,
+      tension: 65,
+      friction: 9,
+      useNativeDriver: true,
+    }).start();
+
+    // Auto-dismiss après 4s
+    setTimeout(() => {
+      Animated.timing(toastAnim, {
+        toValue: -150,
+        duration: 250,
+        useNativeDriver: true,
+      }).start(() => setToast(null));
+    }, 4000);
+  };
+
+  // ─── Montant numérique ─────────────────────────────────
+  const numericAmount = useMemo(() => {
+    const n = parseInt(String(amount || '0').replace(/\D/g, ''), 10);
+    return isNaN(n) ? 0 : n;
+  }, [amount]);
+
+  const displayAmount = useMemo(() => {
+    return numericAmount > 0 ? numericAmount.toLocaleString('fr-FR') : '0';
+  }, [numericAmount]);
+
+  // ─── Validation montant inline ─────────────────────────
+  const amountError = useMemo(() => {
+    if (numericAmount === 0) return null;
+    if (numericAmount < 100) return 'Minimum 100 FCFA';
+    if (numericAmount > balance) return 'Solde insuffisant';
+    return null;
+  }, [numericAmount, balance]);
+
+  // ─── Animation montant ─────────────────────────────────
+  const amountOpacity = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    Animated.sequence([
+      Animated.timing(amountOpacity, { toValue: 0.6, duration: 90, useNativeDriver: true }),
+      Animated.timing(amountOpacity, { toValue: 1, duration: 140, useNativeDriver: true }),
+    ]).start();
+  }, [numericAmount]);
+
+  // ─── Caret clignotant pour le montant vide ─────────────
+  const caretOpacity = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    if (!amountFocused || numericAmount !== 0) {
+      caretOpacity.setValue(1);
+      return;
+    }
+    const blink = Animated.loop(
+      Animated.sequence([
+        Animated.timing(caretOpacity, { toValue: 0, duration: 500, useNativeDriver: true }),
+        Animated.timing(caretOpacity, { toValue: 1, duration: 500, useNativeDriver: true }),
+      ])
+    );
+    blink.start();
+    return () => blink.stop();
+  }, [amountFocused, numericAmount]);
+
+  // ─── Pulse bénéficiaire vide ───────────────────────────
+  useEffect(() => {
+    if (!selectedContact) {
+      beneficiaryPulseLoop.current = Animated.loop(
+        Animated.sequence([
+          Animated.timing(beneficiaryPulse, { toValue: 1.02, duration: 900, useNativeDriver: true }),
+          Animated.timing(beneficiaryPulse, { toValue: 1, duration: 900, useNativeDriver: true }),
+        ])
+      );
+      beneficiaryPulseLoop.current.start();
+    } else {
+      if (beneficiaryPulseLoop.current) beneficiaryPulseLoop.current.stop();
+      beneficiaryPulse.setValue(1);
+    }
+    return () => {
+      if (beneficiaryPulseLoop.current) beneficiaryPulseLoop.current.stop();
+    };
+  }, [selectedContact]);
+
+  // ─── Animation scan ────────────────────────────────────
   useEffect(() => {
     if (!qrScannerVisible || !qrPermission?.granted || qrScanned || isVerifyingQR) return;
     const loop = Animated.loop(
@@ -364,8 +490,11 @@ export default function SendMoneyScreen({ navigation }) {
     outputRange: [6, QR_FRAME_SIZE - 9],
   });
 
+  // ═════════════════════════════════════════════════════════
+  // EFFETS
+  // ═════════════════════════════════════════════════════════
   useEffect(() => {
-    const loadCurrentUser = async () => {
+    (async () => {
       try {
         const user = await API.getCurrentUser();
         const clean = user?.phone ? String(user.phone).replace(/\s/g, '').replace(/^\+?227/, '') : null;
@@ -373,8 +502,7 @@ export default function SendMoneyScreen({ navigation }) {
         setCurrentUserPhone(clean);
         setCurrentUserName(name);
       } catch (e) {}
-    };
-    loadCurrentUser();
+    })();
   }, []);
 
   useEffect(() => {
@@ -404,12 +532,12 @@ export default function SendMoneyScreen({ navigation }) {
     const loadContacts = async () => {
       try {
         const data = await API.getContacts();
-        const uniqueContacts = Array.isArray(data)
-          ? data.filter((c, index, arr) => arr.findIndex(x => x.id === c.id) === index)
+        const unique = Array.isArray(data)
+          ? data.filter((c, i, arr) => arr.findIndex(x => x.id === c.id) === i)
           : [];
-        setContacts(uniqueContacts);
+        setContacts(unique);
       } catch (error) {
-        Alert.alert('Erreur', 'Impossible de charger vos contacts.');
+        showToast('error', 'Erreur', 'Impossible de charger vos contacts.');
       } finally {
         setIsLoadingContacts(false);
       }
@@ -417,40 +545,62 @@ export default function SendMoneyScreen({ navigation }) {
     loadContacts();
   }, []);
 
+  // Charge les montants récents
   useEffect(() => {
-    if (selectedContact?.isFromQR) return;
-    if (selectedContact) { setBeneficiaryCheck(null); return; }
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(RECENT_AMOUNTS_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && typeof parsed === 'object') setRecentAmounts(parsed);
+        }
+      } catch (_) {}
+    })();
+  }, []);
 
-    const cleanPhone = String(manualPhone || '').replace(/\s/g, '').replace(/^\+?227/, '');
+  // Sauvegarde un montant récent pour un bénéficiaire
+  const saveRecentAmount = useCallback(async (phone, amountValue) => {
+    if (!phone || !amountValue) return;
+    try {
+      const clean = String(phone).replace(/\s/g, '').replace(/^\+?227/, '');
+      const next = { ...recentAmounts };
+      const list = Array.isArray(next[clean]) ? next[clean] : [];
+      const filtered = [amountValue, ...list.filter(v => v !== amountValue)].slice(0, 3);
+      next[clean] = filtered;
+      setRecentAmounts(next);
+      await AsyncStorage.setItem(RECENT_AMOUNTS_KEY, JSON.stringify(next));
+    } catch (_) {}
+  }, [recentAmounts]);
 
-    if (!cleanPhone || cleanPhone.length < 8) { setBeneficiaryCheck(null); return; }
-    if (contacts.some((c) => c.phone === cleanPhone)) { setBeneficiaryCheck(null); return; }
-
+  // Recherche bénéficiaire
+  useEffect(() => {
+    if (!manualPhone || manualPhone.length < 8) {
+      setBeneficiaryCheck(null);
+      return;
+    }
+    const cleanPhone = String(manualPhone).replace(/\s/g, '').replace(/^\+?227/, '');
+    if (contacts.some((c) => c.phone === cleanPhone)) {
+      setBeneficiaryCheck(null);
+      return;
+    }
     setBeneficiaryCheck('loading');
 
     const timer = setTimeout(async () => {
       try {
         const result = await API.searchCustomerByPhone(cleanPhone);
         if (String(manualPhone).replace(/\s/g, '').replace(/^\+?227/, '') !== cleanPhone) return;
-
         if (result) {
           let realName = extractRealName(result);
           if (!realName && result.qr_name) realName = result.qr_name;
-          if (!realName) {
-            const localContact = contacts.find(c => c.phone === cleanPhone);
-            if (localContact?.name) realName = localContact.name;
-          }
-          const finalDisplayName = realName || `+227 ${cleanPhone}`;
           setBeneficiaryCheck({
             found: true,
             name: realName,
-            displayName: finalDisplayName,
-            kyc: result.kyc_level || result.profile?.kyc_level || null,
+            displayName: realName || `+227 ${cleanPhone}`,
+            kyc: result.kyc_level || null,
             isSelf: !!result.isSelf,
-            fromQR: false,
           });
         } else {
-          setBeneficiaryCheck({ found: false, fromQR: false });
+          setBeneficiaryCheck({ found: false });
         }
       } catch (e) {
         setBeneficiaryCheck(null);
@@ -458,25 +608,29 @@ export default function SendMoneyScreen({ navigation }) {
     }, 500);
 
     return () => clearTimeout(timer);
-  }, [manualPhone, selectedContact, contacts]);
+  }, [manualPhone, contacts]);
 
+  // Prefilled
   const prefilledApplied = useRef(false);
-
   useEffect(() => {
     if (prefilledApplied.current) return;
     if (isLoadingContacts) return;
-
     const params = route.params;
-    if (!params || !params.prefilledPhone) { prefilledApplied.current = true; return; }
-
-    let cleanPhone = String(params.prefilledPhone).replace(/[\s\-]/g, '').replace(/^\+?227/, '');
-
+    if (!params || !params.prefilledPhone) {
+      prefilledApplied.current = true;
+      return;
+    }
+    const cleanPhone = String(params.prefilledPhone).replace(/[\s\-]/g, '').replace(/^\+?227/, '');
     const existingContact = contacts.find(c => c.phone === cleanPhone);
-    if (existingContact) { setSelectedContact(existingContact); setManualPhone(''); }
-    else { setManualPhone(cleanPhone); }
-
-    if (params.prefilledAmount) setAmount(String(params.prefilledAmount));
-
+    if (existingContact) {
+      setSelectedContact(existingContact);
+    } else {
+      setManualPhone(cleanPhone);
+      setPickerVisible(true);
+    }
+    if (params.prefilledAmount) {
+      setAmount(String(params.prefilledAmount));
+    }
     prefilledApplied.current = true;
     navigation.setParams({
       prefilledPhone: undefined,
@@ -485,83 +639,251 @@ export default function SendMoneyScreen({ navigation }) {
     });
   }, [isLoadingContacts, route.params, contacts, navigation]);
 
-  // ══════════════════════════════════════════════════════════════
-  // ✅ Helpers "favoris"
-  // ══════════════════════════════════════════════════════════════
-  const isPhoneInFavorites = (phone) => {
-    const cleanPhone = String(phone || '').replace(/\s/g, '').replace(/^\+?227/, '');
-    if (!cleanPhone) return false;
-    return contacts.some((c) => c.phone === cleanPhone && c.isFavorite);
+  // ─── Auto-focus du montant à l'arrivée ─────────────────
+  const autoFocusDone = useRef(false);
+  useEffect(() => {
+    if (autoFocusDone.current) return;
+    if (isLoadingContacts) return;
+    if (selectedContact) { autoFocusDone.current = true; return; }
+    const t = setTimeout(() => {
+      amountInputRef.current?.focus();
+      autoFocusDone.current = true;
+    }, 500);
+    return () => clearTimeout(t);
+  }, [isLoadingContacts, selectedContact]);
+
+  // ═════════════════════════════════════════════════════════
+  // PICKER + SWIPE-TO-DISMISS
+  // ═════════════════════════════════════════════════════════
+  const openPicker = () => {
+    hapticTap('light');
+    setPickerSearch('');
+    setManualPhone('');
+    setBeneficiaryCheck(null);
+    setPickerVisible(true);
+    sheetTranslateY.setValue(0);
   };
 
-  const isSelectedContactFavorite = selectedContact
-    ? contacts.some((c) => c.phone === selectedContact.phone && c.isFavorite)
-    : false;
+  const closePicker = () => {
+    setPickerVisible(false);
+    setPickerSearch('');
+    setManualPhone('');
+    setBeneficiaryCheck(null);
+  };
 
-  const handleAddFoundToFavorites = async () => {
+  const sheetPanResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, g) => g.dy > 8 && Math.abs(g.dy) > Math.abs(g.dx),
+      onPanResponderMove: (_, g) => {
+        if (g.dy > 0) sheetTranslateY.setValue(g.dy);
+      },
+      onPanResponderRelease: (_, g) => {
+        if (g.dy > 120 || g.vy > 0.8) {
+          Animated.timing(sheetTranslateY, {
+            toValue: 800,
+            duration: 200,
+            useNativeDriver: true,
+          }).start(() => {
+            closePicker();
+            sheetTranslateY.setValue(0);
+          });
+        } else {
+          Animated.spring(sheetTranslateY, { toValue: 0, useNativeDriver: true }).start();
+        }
+      },
+    })
+  ).current;
+
+  const handleSelectContact = (contact) => {
+    hapticTap('light');
+    setSelectedContact(contact);
+    closePicker();
+  };
+
+  const addContactSafely = (newContact) => {
+    setContacts(prev => {
+      if (prev.some(c => c.id === newContact.id)) return prev;
+      if (newContact.phone && prev.some(c => c.phone === newContact.phone)) return prev;
+      return [...prev, newContact];
+    });
+  };
+
+  // ═════════════════════════════════════════════════════════
+  // 🔒 SAISIE MANUELLE — vérification AVANT sélection
+  // ═════════════════════════════════════════════════════════
+  const handleUseManualPhone = async () => {
     const cleanPhone = String(manualPhone).replace(/\s/g, '').replace(/^\+?227/, '');
-    if (!cleanPhone) return;
+    if (!cleanPhone || cleanPhone.length < 8) {
+      showToast('error', 'Numéro invalide', 'Veuillez saisir un numéro valide.');
+      return;
+    }
 
-    const name = beneficiaryCheck?.name?.trim() || `+227 ${cleanPhone}`;
+    // 1. Déjà dans nos contacts NT Albey → OK
+    const existing = contacts.find(c => c.phone === cleanPhone);
+    if (existing) {
+      handleSelectContact(existing);
+      return;
+    }
 
-    try {
-      const newContact = await API.addContact({
+    // 2. Vérif async déjà finie → on décide
+    if (beneficiaryCheck?.found === false) {
+      showToast(
+        'error',
+        'Numéro introuvable',
+        `Le numéro +227 ${cleanPhone} n'est pas enregistré sur NT Albey.`
+      );
+      return;
+    }
+
+    if (beneficiaryCheck?.found === true) {
+      const name = beneficiaryCheck.name?.trim() || `+227 ${cleanPhone}`;
+      setSelectedContact({
+        id: `manual-${cleanPhone}`,
         name,
         phone: cleanPhone,
         avatar: buildInitials(name),
-        color: pickRandomContactColor(),
-        isFavorite: true,
+        color: COLORS.primary,
+        isFavorite: false,
+        isFromQR: false,
       });
-
-      addContactSafely(newContact);
-      setSelectedContact(newContact);
-      setManualPhone('');
-      setBeneficiaryCheck(null);
-
-      Alert.alert(
-        '⭐ Ajouté aux favoris',
-        `${name} a été ajouté à vos favoris.`
-      );
-    } catch (error) {
-      Alert.alert('Erreur', 'Impossible d\'ajouter aux favoris.');
+      closePicker();
+      return;
     }
+
+    // 3. Cas rare : l'utilisateur a cliqué OK avant la fin de la vérif (500ms)
+    setIsVerifyingContact(true);
+    let apiResult = null;
+    try {
+      apiResult = await API.searchCustomerByPhone(cleanPhone);
+    } catch (_) {
+      apiResult = null;
+    } finally {
+      setIsVerifyingContact(false);
+    }
+
+    if (!apiResult) {
+      showToast(
+        'error',
+        'Numéro introuvable',
+        `Le numéro +227 ${cleanPhone} n'est pas enregistré sur NT Albey.`
+      );
+      return;
+    }
+
+    const realName = extractRealName(apiResult) || `+227 ${cleanPhone}`;
+    setSelectedContact({
+      id: `manual-${cleanPhone}`,
+      name: realName,
+      phone: cleanPhone,
+      avatar: buildInitials(realName),
+      color: COLORS.primary,
+      isFavorite: false,
+      isFromQR: false,
+    });
+    closePicker();
   };
 
-  const handleAddSelectedToFavorites = async () => {
-    if (!selectedContact) return;
-
-    const cleanPhone = String(selectedContact.phone).replace(/\s/g, '').replace(/^\+?227/, '');
-    const name = selectedContact.name;
-    const isEphemeral =
-      selectedContact.isFromQR || String(selectedContact.id).startsWith('qr-');
+  // ═════════════════════════════════════════════════════════
+  // 🔒 RÉPERTOIRE — CORRIGÉ v20 (Gestion des permissions)
+  // ═════════════════════════════════════════════════════════
+  const openPhoneContacts = async () => {
+    if (isVerifyingContact) return;
 
     try {
-      if (isEphemeral) {
-        const newContact = await API.addContact({
-          name,
-          phone: cleanPhone,
-          avatar: buildInitials(name),
-          color: pickRandomContactColor(),
-          isFavorite: true,
-        });
-        addContactSafely(newContact);
-        setSelectedContact(newContact);
-      } else {
-        await API.updateContact(selectedContact.id, { isFavorite: true });
-        setContacts((prev) =>
-          prev.map((c) =>
-            c.id === selectedContact.id ? { ...c, isFavorite: true } : c
-          )
-        );
-        setSelectedContact((prev) => (prev ? { ...prev, isFavorite: true } : prev));
+      const { status, canAskAgain } = await Contacts.requestPermissionsAsync();
+
+      if (status !== 'granted') {
+        if (!canAskAgain) {
+          showToast(
+            'error',
+            'Autorisation requise',
+            'Activez l\'accès aux contacts dans les réglages de votre téléphone.'
+          );
+          setTimeout(() => {
+            Linking.openSettings();
+          }, 800);
+          return;
+        }
+        showToast('error', 'Autorisation refusée', 'Accès au répertoire requis.');
+        return;
       }
 
-      Alert.alert('⭐ Ajouté aux favoris', `${name} a été ajouté à vos favoris.`);
+      const contact = await Contacts.presentContactPickerAsync();
+      if (!contact) return;
+
+      const phoneNumber = contact.phoneNumbers && contact.phoneNumbers.length > 0
+        ? contact.phoneNumbers[0].number.replace(/\s/g, '').replace(/[^0-9]/g, '').replace(/^\+?227/, '')
+        : '';
+      const contactName = contact.name || 'Contact inconnu';
+
+      if (!phoneNumber || phoneNumber.length < 8) {
+        showToast('error', 'Numéro invalide', 'Ce contact ne possède pas de numéro valide.');
+        return;
+      }
+
+      // 1. Déjà dans nos contacts NT Albey → sélection directe
+      const existing = contacts.find(c => c.phone === phoneNumber);
+      if (existing) {
+        handleSelectContact(existing);
+        return;
+      }
+
+      // 2. Vérifier côté backend AVANT toute sélection
+      setIsVerifyingContact(true);
+      let apiResult = null;
+      try {
+        apiResult = await API.searchCustomerByPhone(phoneNumber);
+      } catch (_) {
+        apiResult = null;
+      } finally {
+        setIsVerifyingContact(false);
+      }
+
+      if (!apiResult) {
+        showToast(
+          'error',
+          'Numéro introuvable',
+          `Le numéro +227 ${phoneNumber} n'est pas enregistré sur NT Albey. Il ne peut pas recevoir de transfert.`
+        );
+        return;
+      }
+
+      // 3. Le numéro est bien sur NT Albey → on l'ajoute et on le sélectionne
+      const realName =
+        extractRealName(apiResult) ||
+        contactName ||
+        `+227 ${phoneNumber}`;
+
+      try {
+        const newContact = await API.addContact({
+          name: realName,
+          phone: phoneNumber,
+          avatar: buildInitials(realName),
+          color: pickRandomContactColor(),
+          isFavorite: false,
+        });
+        addContactSafely(newContact);
+        handleSelectContact(newContact);
+      } catch (e) {
+        // Fallback : sélection éphémère (le backend a confirmé qu'il existe)
+        handleSelectContact({
+          id: `phone-${phoneNumber}`,
+          name: realName,
+          phone: phoneNumber,
+          avatar: buildInitials(realName),
+          color: pickRandomContactColor(),
+          isFavorite: false,
+          isFromQR: false,
+        });
+      }
     } catch (error) {
-      Alert.alert('Erreur', 'Impossible d\'ajouter aux favoris.');
+      showToast('error', 'Erreur', 'Impossible d\'accéder aux contacts.');
     }
   };
 
+  // ═════════════════════════════════════════════════════════
+  // QR SCANNER
+  // ═════════════════════════════════════════════════════════
   const openQRScanner = async () => {
     if (!guardSensitiveOperation('le scan de QR code')) return;
     setQrScanned(false);
@@ -582,11 +904,10 @@ export default function SendMoneyScreen({ navigation }) {
 
   const applyQRDataToForm = async (data) => {
     let phone = null, qrAmount = null, qrName = null;
-
     if (data.kind === 'ntalbey') {
       if (!isValidQRPayload(data)) {
         closeQRScanner();
-        Alert.alert('❌ QR Code invalide ou expiré', 'Demandez un nouveau QR à votre bénéficiaire.', [{ text: 'Compris' }]);
+        showToast('error', 'QR invalide', 'QR Code invalide ou expiré.');
         return;
       }
       phone = String(data.phone).replace(/[\s\-]/g, '');
@@ -599,69 +920,46 @@ export default function SendMoneyScreen({ navigation }) {
       qrAmount = data.parsed.amount;
       qrName = data.parsed.name || null;
     }
-
     if (!phone) {
       closeQRScanner();
-      Alert.alert('❌ QR Code non reconnu', 'Utilisez l\'onglet « Mon QR » de NT Albey.', [{ text: 'OK' }]);
+      showToast('error', 'QR non reconnu', 'Utilisez l\'onglet « Mon QR » de NT Albey.');
       return;
     }
-
     const cleanedPhone = phone.replace(/^\+?227/, '');
-    const existingContact = contacts.find(c => c.phone === cleanedPhone);
-    if (existingContact) {
-      setSelectedContact(existingContact);
-      setManualPhone('');
-      setBeneficiaryCheck(null);
+    const existing = contacts.find(c => c.phone === cleanedPhone);
+    if (existing) {
+      setSelectedContact(existing);
       if (qrAmount) setAmount(String(qrAmount));
-      setTimeout(() => { closeQRScanner(); Alert.alert('✅ Contact trouvé', existingContact.name); }, 200);
+      setTimeout(() => { closeQRScanner(); closePicker(); }, 200);
       return;
     }
-
     setIsVerifyingQR(true);
     try {
       const result = await API.searchCustomerByPhone(cleanedPhone);
-
       if (!result && !qrName) {
         setIsVerifyingQR(false);
         closeQRScanner();
-        Alert.alert('❌ Compte introuvable', `Le numéro ${cleanedPhone} n'est pas enregistré sur NT Albey.`, [{ text: 'Compris' }]);
+        showToast('error', 'Compte introuvable', `Le numéro ${cleanedPhone} n'est pas enregistré.`);
         return;
       }
-
       let realName = qrName || extractRealName(result) || null;
       const finalDisplayName = realName || `+227 ${cleanedPhone}`;
-      const initials = buildInitials(realName || cleanedPhone);
-
       setSelectedContact({
         id: `qr-${cleanedPhone}`,
         name: finalDisplayName,
         phone: cleanedPhone,
-        avatar: initials,
+        avatar: buildInitials(realName || cleanedPhone),
         color: COLORS.primary,
         isFavorite: false,
         isFromQR: true,
       });
-      setManualPhone('');
-      setBeneficiaryCheck({
-        found: true,
-        name: realName,
-        displayName: finalDisplayName,
-        kyc: result?.kyc_level || null,
-        isSelf: !!result?.isSelf,
-        fromQR: true,
-      });
-
       if (qrAmount) setAmount(String(qrAmount));
-
       setIsVerifyingQR(false);
-      setTimeout(() => {
-        closeQRScanner();
-        Alert.alert('✅ Compte vérifié', `${finalDisplayName}\n${cleanedPhone}`, [{ text: 'Continuer' }]);
-      }, 200);
+      setTimeout(() => { closeQRScanner(); closePicker(); }, 200);
     } catch (e) {
       setIsVerifyingQR(false);
       closeQRScanner();
-      Alert.alert('⚠️ Impossible de vérifier', 'Le serveur NT Albey est injoignable.', [{ text: 'OK' }]);
+      showToast('error', 'Erreur réseau', 'Le serveur NT Albey est injoignable.');
     }
   };
 
@@ -671,59 +969,35 @@ export default function SendMoneyScreen({ navigation }) {
     applyQRDataToForm(analyzeQRData(data));
   };
 
-  const authenticateWithBiometrics = async () => {
-    if (isSending || isVerifyingAuth) return;
-    setIsVerifyingAuth(true);
-    try {
-      await verifyTransactionAuth(AUTH_METHOD.BIOMETRIC);
-      await executeTransfer();
-    } catch (error) {
-      if (error.message === AUTH_CANCELLED) return;
-      const msg = String(error.message || '');
-      if (msg.includes('Session biométrique expirée') || msg.includes('Aucune empreinte')) {
-        setUseBiometric(false);
-      }
-      Alert.alert('Authentification refusée', msg || 'Veuillez réessayer.');
-    } finally {
-      setIsVerifyingAuth(false);
-    }
-  };
-
-  const confirmWithPin = async () => {
-    if (isSending || isVerifyingAuth) return;
-    if (!pin || pin.length < 8 || pin.length > 20) {
-      Alert.alert('Code incorrect', 'Le mot de passe doit contenir entre 8 et 20 caractères.');
-      return;
-    }
-    setIsVerifyingAuth(true);
-    try {
-      await verifyTransactionAuth(AUTH_METHOD.PIN, pin);
-      setPin('');
-      await executeTransfer();
-    } catch (error) {
-      Alert.alert('Code incorrect', error.message || 'Le mot de passe saisi est incorrect.');
-      setPin('');
-    } finally {
-      setIsVerifyingAuth(false);
-    }
-  };
-
+  // ═════════════════════════════════════════════════════════
+  // ENVOI
+  // ═════════════════════════════════════════════════════════
   const executeTransfer = async () => {
-    if (!transactionDetails) return;
-
+    if (!selectedContact) return;
     if (isDeviceCompromised()) {
       Alert.alert('🔒 Opération bloquée', 'Les transactions sont désactivées sur un appareil rooté.');
       return;
     }
+    const parsed = parseAmount(String(numericAmount), { min: 100, max: 2_000_000 });
+    if (!parsed.ok) {
+      showToast('error', 'Montant invalide', parsed.reason);
+      return;
+    }
+    if (parsed.value > balance) {
+      showToast('error', 'Solde insuffisant', `Votre solde : ${balance.toLocaleString()} FCFA.`);
+      return;
+    }
 
-    const receiverPhone = String(transactionDetails.phone || '').replace(/\s/g, '').replace(/^\+?227/, '');
-    const amountValue = Number(amount);
+    const receiverPhone = String(selectedContact.phone).replace(/\s/g, '').replace(/^\+?227/, '');
+    const amountValue = parsed.value;
 
-    setConfirmModalVisible(false);
     setIsSending(true);
 
     try {
-      const result = await API.accountToAccount({ receiver_phone: receiverPhone, amount: amountValue });
+      const result = await API.accountToAccount({
+        receiver_phone: receiverPhone,
+        amount: amountValue,
+      });
 
       const grossAmount = Number(result.gross_amount) || amountValue;
       const feeAmount   = Number(result.fee_amount)   || 0;
@@ -735,49 +1009,47 @@ export default function SendMoneyScreen({ navigation }) {
         : new Date().toLocaleString('fr-FR');
 
       setTransactionDetails({
-        beneficiary:    transactionDetails.beneficiary,
-        phone:          receiverPhone,
-        senderPhone:    currentUserPhone || '',
-        senderName:     currentUserName  || 'Moi',
-        reference:        result.reference,
-        transactionId:    result.id,
-        status:           result.status,
-        transType:        result.trans_type,
-        currency:         currency,
-        grossAmount:      grossAmount,
-        feeAmount:        feeAmount,
-        netAmount:        netAmount,
-        totalDebited:     totalDebited,
-        amount:  grossAmount.toLocaleString() + ' ' + currency,
-        fees:    feeAmount.toLocaleString()   + ' ' + currency,
-        total:   totalDebited.toLocaleString() + ' ' + currency,
-        date:    initiatedDate,
-        _pending: false,
+        beneficiary: selectedContact.name,
+        phone: receiverPhone,
+        senderPhone: currentUserPhone || '',
+        senderName: currentUserName || 'Moi',
+        reference: result.reference,
+        transactionId: result.id,
+        status: result.status,
+        transType: result.trans_type,
+        currency,
+        grossAmount,
+        feeAmount,
+        netAmount,
+        totalDebited,
+        amount: grossAmount.toLocaleString() + ' ' + currency,
+        fees: feeAmount.toLocaleString() + ' ' + currency,
+        total: totalDebited.toLocaleString() + ' ' + currency,
+        date: initiatedDate,
       });
 
+      await saveRecentAmount(receiverPhone, amountValue);
+
       if (result.id) {
-        await saveTxMetadata(result.id, {
-          reference:       result.reference,
-          sender_phone:    currentUserPhone,
-          sender_name:     currentUserName,
-          receiver_phone:  receiverPhone,
-          receiver_name:   transactionDetails.beneficiary,
-        });
+        try {
+          await saveTxMetadata(result.id, {
+            reference: result.reference,
+            sender_phone: currentUserPhone,
+            sender_name: currentUserName,
+            receiver_phone: receiverPhone,
+            receiver_name: selectedContact.name,
+          });
+        } catch (_) {}
       }
 
       try {
-        const beneficiaryLabel = transactionDetails.beneficiary?.trim()
-          ? transactionDetails.beneficiary
-          : `+227 ${receiverPhone}`;
-
         await API.addNotification({
           title: '📤 Transfert envoyé',
-          message: `Vous avez envoyé ${grossAmount.toLocaleString('fr-FR')} ${currency} à ${beneficiaryLabel}.`,
+          message: `Vous avez envoyé ${grossAmount.toLocaleString('fr-FR')} ${currency} à ${selectedContact.name}.`,
           type: 'info',
           transactionId: result.id,
           reference: result.reference,
         });
-
         const raw = await AsyncStorage.getItem(NOTIFIED_TX_IDS_KEY);
         let ids = raw ? JSON.parse(raw) : [];
         if (!Array.isArray(ids)) ids = [];
@@ -787,600 +1059,667 @@ export default function SendMoneyScreen({ navigation }) {
           ids = ids.slice(-100);
           await AsyncStorage.setItem(NOTIFIED_TX_IDS_KEY, JSON.stringify(ids));
         }
-      } catch (notifError) {}
+      } catch (_) {}
 
-      setPin('');
       setReceiptModalVisible(true);
-
       if (typeof refreshWallet === 'function') await refreshWallet();
     } catch (error) {
-      Alert.alert('Échec du transfert', error.message || 'Impossible d\'effectuer le transfert.');
+      showToast('error', 'Échec du transfert', error.message || 'Impossible d\'effectuer le transfert.');
     } finally {
       setIsSending(false);
     }
   };
 
-  const getDisplayAmount = () => {
-    if (!amount || parseInt(amount) <= 0) return '0 FCFA';
-    return parseInt(amount).toLocaleString() + ' FCFA';
+  // ═════════════════════════════════════════════════════════
+  // CONFIRMATION
+  // ═════════════════════════════════════════════════════════
+  const canSend =
+    !!selectedContact &&
+    numericAmount >= 100 &&
+    numericAmount <= balance &&
+    !isSending &&
+    !isVerifyingAuth;
+
+  const handleConfirm = async () => {
+    if (!canSend) return;
+    hapticTap('medium');
+    Keyboard.dismiss();
+
+    if (isBiometricAvailable && useBiometric) {
+      setIsVerifyingAuth(true);
+      try {
+        await verifyTransactionAuth(AUTH_METHOD.BIOMETRIC);
+        await executeTransfer();
+      } catch (error) {
+        if (error.message === AUTH_CANCELLED) return;
+        const msg = String(error.message || '');
+        if (msg.includes('Session biométrique expirée') || msg.includes('Aucune empreinte')) {
+          setUseBiometric(false);
+          setPinRequired(true);
+          setTimeout(() => pinInputRef.current?.focus(), 150);
+        } else {
+          showToast('error', 'Authentification refusée', msg || 'Veuillez réessayer.');
+        }
+      } finally {
+        setIsVerifyingAuth(false);
+      }
+      return;
+    }
+
+    setPinRequired(true);
+    setTimeout(() => pinInputRef.current?.focus(), 150);
   };
 
-  const generatePDFHTML = (details, logoBase64) => {
-    const logoHtml = logoBase64
-      ? `<img src="${logoBase64}" alt="NT Albey Logo" class="logo" />`
-      : `<h1 style="color:#008933;font-size:24px;margin:0;">NT ALBEY</h1>`;
+  const confirmWithPin = async () => {
+    if (isSending || isVerifyingAuth) return;
+    if (!pin || pin.length < 8 || pin.length > 20) {
+      showToast('error', 'Code incorrect', 'Le mot de passe doit contenir entre 8 et 20 caractères.');
+      return;
+    }
+    hapticTap('medium');
+    setIsVerifyingAuth(true);
+    try {
+      await verifyTransactionAuth(AUTH_METHOD.PIN, pin);
+      setPin('');
+      setPinRequired(false);
+      await executeTransfer();
+    } catch (error) {
+      showToast('error', 'Code incorrect', error.message || 'Le mot de passe saisi est incorrect.');
+      setPin('');
+    } finally {
+      setIsVerifyingAuth(false);
+    }
+  };
 
-    const date = details.date || new Date().toLocaleString('fr-FR');
-    const senderName = details.senderName || 'Moi';
-    const senderPhoneLine = details.senderPhone ? `+227 ${details.senderPhone}` : 'Mon compte';
-    const receiverName = details.beneficiary || 'N/A';
-    const receiverPhoneLine = details.phone ? `+227 ${details.phone}` : 'N/A';
-    const netLine = details.netAmount != null ? `${details.netAmount.toLocaleString()} ${details.currency || 'XOF'}` : 'N/A';
-
-    return `<!DOCTYPE html>
-      <html><head><meta charset="UTF-8">
-      <style>
-        * { margin:0; padding:0; box-sizing:border-box; }
-        body { font-family:'Helvetica Neue',Arial,sans-serif; padding:40px 30px; max-width:700px; margin:0 auto; color:#1A1A1A; background:#fff; }
-        .header { text-align:center; border-bottom:3px solid #008933; padding-bottom:20px; margin-bottom:25px; }
-        .logo { max-width:100px; height:auto; margin-bottom:6px; }
-        .header h1 { color:#008933; font-size:22px; margin:0; letter-spacing:3px; font-weight:800; }
-        .success-badge { text-align:center; margin-bottom:20px; }
-        .success-badge span { background-color:#10B981; color:white; padding:6px 24px; border-radius:30px; font-size:14px; font-weight:700; }
-        .highlight-box { background-color:#F0FFF4; border-radius:12px; padding:18px; margin:16px 0; border-left:5px solid #008933; }
-        .info-row { display:flex; justify-content:space-between; padding:8px 0; border-bottom:1px solid #F0F0F0; }
-        .info-row:last-child { border-bottom:none; }
-        .info-label { color:#666; font-size:13px; }
-        .info-value { color:#1A1A1A; font-size:13px; font-weight:600; text-align:right; max-width:60%; }
-        .amount-highlight { color:#008933; font-size:16px; font-weight:800; }
-        .amount-sent { color:#FF6600; font-size:16px; font-weight:800; }
-        .fees-value { color:#FF4444; font-weight:700; }
-        .net-value { color:#10B981; font-weight:700; }
-        .ref-block { background-color:#FFF3E0; border-radius:12px; padding:16px; margin:16px 0; text-align:center; }
-        .ref-label { color:#666; font-size:11px; text-transform:uppercase; letter-spacing:1px; margin-bottom:4px; }
-        .ref-value { color:#FF6600; font-size:18px; font-weight:800; letter-spacing:2px; font-family:monospace; }
-        .ref-uuid-label { color:#999; font-size:10px; text-transform:uppercase; letter-spacing:1px; margin-top:12px; }
-        .ref-uuid { color:#666; font-size:10px; font-family:monospace; word-break:break-all; }
-        .footer { text-align:center; margin-top:30px; padding-top:20px; border-top:2px solid #F0F0F0; color:#999; font-size:11px; }
-        .footer .brand { color:#008933; font-weight:700; font-size:14px; }
-      </style></head>
-      <body>
-        <div class="header">${logoHtml}<h1>NT ALBEY</h1></div>
-        <div class="success-badge"><span>✅ TRANSFERT ${formatStatus(details.status).toUpperCase()}</span></div>
-        <div class="highlight-box">
-          <div class="info-row"><span class="info-label">📱 Émetteur</span><span class="info-value">${senderName}</span></div>
-          <div class="info-row"><span class="info-label">📞 Tél. émetteur</span><span class="info-value">${senderPhoneLine}</span></div>
-          <div class="info-row"><span class="info-label">👤 Bénéficiaire</span><span class="info-value">${receiverName}</span></div>
-          <div class="info-row"><span class="info-label">📞 Tél. bénéficiaire</span><span class="info-value">${receiverPhoneLine}</span></div>
-        </div>
-        <div class="info-row"><span class="info-label">💰 Montant envoyé</span><span class="info-value amount-sent">${details.amount || 'N/A'}</span></div>
-        <div class="info-row"><span class="info-label">📋 Frais</span><span class="info-value fees-value">${details.fees || 'N/A'}</span></div>
-        <div class="info-row"><span class="info-label">🎁 Net reçu</span><span class="info-value net-value">${netLine}</span></div>
-        <div class="info-row"><span class="info-label">💳 Total débité</span><span class="info-value amount-highlight">${details.total || 'N/A'}</span></div>
-        <div class="info-row"><span class="info-label">📅 Date</span><span class="info-value">${date}</span></div>
-        <div class="ref-block">
-          <div class="ref-label">🔑 Référence transaction</div>
-          <div class="ref-value">${details.reference || 'N/A'}</div>
-          ${details.transactionId ? `<div class="ref-uuid-label">🆔 ID technique</div><div class="ref-uuid">${details.transactionId}</div>` : ''}
-        </div>
-        <div class="footer"><div class="brand">NT ALBEY</div><div>📞 Support : 555</div></div>
-      </body></html>`;
+  // ═════════════════════════════════════════════════════════
+  // REÇU
+  // ═════════════════════════════════════════════════════════
+  const handleCopyReceipt = (details) => {
+    if (!details) return;
+    const message = `NT ALBEY - REÇU DE TRANSFERT
+━━━━━━━━━━━━━━━━━━━━━
+✅ TRANSFERT EFFECTUÉ
+━━━━━━━━━━━━━━━━━━━━━
+👤 Bénéficiaire : ${details.beneficiary || 'N/A'}
+📱 Numéro : +227 ${details.phone || 'N/A'}
+💰 Montant envoyé : ${details.amount || 'N/A'}
+📋 Frais : ${details.fees || 'N/A'}
+🎁 Net reçu : ${details.netAmount != null ? details.netAmount.toLocaleString() + ' ' + (details.currency || 'XOF') : 'N/A'}
+💳 Total débité : ${details.total || 'N/A'}
+📅 Date : ${details.date || new Date().toLocaleString('fr-FR')}
+🔑 Référence : ${details.reference || 'N/A'}
+━━━━━━━━━━━━━━━━━━━━━`;
+    Alert.alert(
+      'Reçu de transfert',
+      'Le reçu a été préparé.',
+      [
+        { text: 'OK' },
+        {
+          text: 'Partager',
+          onPress: () => Share.share({ message, title: `Reçu - ${details.reference || 'NT Albey'}` }),
+        },
+      ]
+    );
   };
 
   const handleExportPDF = async (details) => {
-    if (!details) { Alert.alert('Erreur', 'Aucune donnée à exporter.'); return; }
+    if (!details) {
+      showToast('error', 'Erreur', 'Aucune donnée à exporter.');
+      return;
+    }
     try {
       setIsExporting(true);
-      const logoBase64 = await getLogoBase64();
-      const html = generatePDFHTML(details, logoBase64);
-      const { base64 } = await Print.printToFileAsync({ html, base64: true });
-      if (!base64) throw new Error('PDF vide');
-
-      const filename = `recu_transfert_${Date.now()}.pdf`;
-      const destUri = `${FileSystem.documentDirectory}${filename}`;
-      await FileSystem.writeAsStringAsync(destUri, base64, { encoding: FileSystem.EncodingType.Base64 });
-
-      const isSharingAvailable = await Sharing.isAvailableAsync();
-      if (isSharingAvailable) {
-        await Sharing.shareAsync(destUri, {
-          mimeType: 'application/pdf',
-          dialogTitle: `Reçu de transfert - ${details.reference || 'NT Albey'}`,
-          UTI: 'com.adobe.pdf',
-        });
-      } else {
-        Alert.alert('Reçu généré', 'Votre reçu est prêt.');
-      }
-    } catch (error) {
-      Alert.alert('Erreur', 'Impossible de générer le PDF.\n' + error.message);
+      const html = `<!DOCTYPE html><html><head><meta charset="utf-8" /><style>body{font-family:sans-serif;padding:24px;color:#0F172A}.header{text-align:center;border-bottom:2px solid #008933;padding-bottom:12px;margin-bottom:20px}.title{color:#008933;font-size:20px;font-weight:bold}.card{background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;padding:16px;margin-bottom:16px}.row{display:flex;justify-content:space-between;margin-bottom:8px}.label{color:#64748B;font-size:13px}.val{font-weight:bold;font-size:14px}.total{color:#008933;font-size:16px}.footer{text-align:center;font-size:11px;color:#94A3B8;margin-top:24px}</style></head><body><div class="header"><div class="title">NT ALBEY - REÇU DE TRANSFERT</div><div style="font-size:12px;color:#64748B;margin-top:4px">Transfert d'argent confirmé</div></div><div class="card"><div class="row"><span class="label">Bénéficiaire :</span><span class="val">${details.beneficiary || 'N/A'}</span></div><div class="row"><span class="label">Numéro :</span><span class="val">+227 ${details.phone || 'N/A'}</span></div><div class="row"><span class="label">Montant :</span><span class="val">${details.amount || 'N/A'}</span></div><div class="row"><span class="label">Frais :</span><span class="val">${details.fees || 'N/A'}</span></div><div class="row"><span class="label">Total débité :</span><span class="val total">${details.total || 'N/A'}</span></div><div class="row"><span class="label">Référence :</span><span class="val">${details.reference || 'N/A'}</span></div><div class="row"><span class="label">Date :</span><span class="val">${details.date || new Date().toLocaleString('fr-FR')}</span></div></div><div class="footer">Niger Telecoms - Albey Mobile Money. Merci pour votre confiance.</div></body></html>`;
+      await Print.printAsync({ html });
+    } catch (err) {
+      const message = `NT ALBEY - Reçu de transfert : ${details.amount || ''} vers +227 ${details.phone || ''}. Réf: ${details.reference || ''}`;
+      Share.share({ message, title: `Reçu - ${details.reference || 'NT Albey'}` });
     } finally {
       setIsExporting(false);
     }
   };
 
-  const handleCopyReceipt = (details) => {
-    if (!details) return;
-
-    const senderName  = details.senderName  || 'Moi';
-    const senderPhone = details.senderPhone ? `+227 ${details.senderPhone}` : 'Mon compte';
-    const receiverName = details.beneficiary || 'N/A';
-    const receiverPhone = details.phone ? `+227 ${details.phone}` : 'N/A';
-    const netLine = details.netAmount != null ? `${details.netAmount.toLocaleString()} ${details.currency || 'XOF'}` : 'N/A';
-
-    const message =
-`NT ALBEY - REÇU DE TRANSFERT
-━━━━━━━━━━━━━━━━━━━━━
-✅ TRANSFERT ${formatStatus(details.status).toUpperCase()}
-━━━━━━━━━━━━━━━━━━━━━
-📱 Émetteur            : ${senderName}
-📞 Tél. émetteur       : ${senderPhone}
-👤 Bénéficiaire        : ${receiverName}
-📞 Tél. bénéficiaire   : ${receiverPhone}
-━━━━━━━━━━━━━━━━━━━━━
-💰 Montant envoyé      : ${details.amount || 'N/A'}
-📋 Frais               : ${details.fees || 'N/A'}
-🎁 Net reçu            : ${netLine}
-💳 Total débité        : ${details.total || 'N/A'}
-📅 Date                : ${details.date || new Date().toLocaleString('fr-FR')}
-🔑 Référence (API)     : ${details.reference || 'N/A'}
-${details.transactionId ? `🆔 ID technique (API)  : ${details.transactionId}\n` : ''}━━━━━━━━━━━━━━━━━━━━━
-📞 Support : 555 | 📧 support@ntalbey.ne`;
-
-    Alert.alert('Reçu copié', 'Le reçu a été copié.', [
-      { text: 'OK' },
-      { text: 'Partager', onPress: () => Share.share({ message, title: `Reçu - ${details.reference}` }) }
-    ]);
-  };
-
-  const getContactFromPhone = (phone) => {
-    const cleanPhone = String(phone || '').replace(/\s/g, '').replace(/^\+?227/, '');
-    return contacts.find(c => c.phone === cleanPhone);
-  };
-
-  const addContactSafely = (newContact) => {
-    setContacts(prev => {
-      if (prev.some(c => c.id === newContact.id)) return prev;
-      if (newContact.phone && prev.some(c => c.phone === newContact.phone)) return prev;
-      return [...prev, newContact];
-    });
-  };
-
-  const openPhoneContacts = async () => {
-    try {
-      const { status } = await Contacts.requestPermissionsAsync();
-      if (status === 'granted') {
-        const contact = await Contacts.presentContactPickerAsync();
-        if (contact) {
-          const phoneNumber = contact.phoneNumbers && contact.phoneNumbers.length > 0
-            ? contact.phoneNumbers[0].number.replace(/\s/g, '').replace(/[^0-9]/g, '')
-            : '';
-          const contactName = contact.name || 'Contact inconnu';
-          if (phoneNumber) {
-            const existingContact = contacts.find(c => c.phone === phoneNumber);
-            if (existingContact) {
-              setSelectedContact(existingContact);
-              setManualPhone('');
-              Alert.alert('Contact trouvé', existingContact.name);
-            } else {
-              const newContact = await API.addContact({
-                name: contactName,
-                phone: phoneNumber,
-                avatar: contactName.substring(0, 2).toUpperCase(),
-                color: pickRandomContactColor(),
-                isFavorite: true,
-              });
-              addContactSafely(newContact);
-              setSelectedContact(newContact);
-              setManualPhone('');
-              Alert.alert('C\'est fait', `${contactName} a été ajouté.`);
-            }
-          }
-        }
-      } else {
-        Alert.alert('Autorisation nécessaire', 'Accès au répertoire requis.', [
-          { text: 'Réessayer', onPress: openPhoneContacts },
-          { text: 'Annuler', style: 'cancel' }
-        ]);
-      }
-    } catch (error) {
-      Alert.alert('Erreur', 'Impossible d\'accéder aux contacts.');
-    }
-  };
-
-  const clearSelectedContact = () => {
-    setSelectedContact(null);
-    setManualPhone('');
-    setBeneficiaryCheck(null);
-  };
-
-  const handleSend = () => {
-    if (!guardSensitiveOperation('l\'envoi d\'argent')) return;
-
-    const rawPhone = selectedContact?.phone || manualPhone;
-    const targetPhone = String(rawPhone || '').replace(/\s/g, '').replace(/^\+?227/, '');
-
-    const targetName =
-      selectedContact?.name
-      || (beneficiaryCheck?.name && beneficiaryCheck.name.trim() ? beneficiaryCheck.name : null)
-      || beneficiaryCheck?.displayName
-      || `+227 ${targetPhone}`;
-
-    if (!targetPhone || targetPhone.length < 8) {
-      Alert.alert('Attention', 'Veuillez sélectionner un contact ou entrer un numéro valide.');
-      return;
-    }
-
-    if (!selectedContact && beneficiaryCheck && beneficiaryCheck.found === false) {
-      Alert.alert('Compte introuvable', `Le numéro ${targetPhone} n'est pas enregistré sur NT Albey.`, [{ text: 'Compris' }]);
-      return;
-    }
-
-    _continueSend(targetPhone, targetName);
-  };
-
-  const _continueSend = (targetPhone, targetName) => {
-    const parsed = parseAmount(amount, { min: 100, max: 2_000_000 });
-    if (!parsed.ok) { Alert.alert('Montant invalide', parsed.reason); return; }
-    const amountValue = parsed.value;
-
-    if (amountValue > balance) {
-      Alert.alert('Solde insuffisant', `Votre solde : ${balance.toLocaleString()} FCFA.\nMontant : ${amountValue.toLocaleString()} FCFA.`);
-      return;
-    }
-
-    setTransactionDetails({
-      beneficiary: targetName,
-      phone: targetPhone,
-      senderPhone: currentUserPhone || '',
-      senderName:  currentUserName  || 'Moi',
-      amount: amountValue.toLocaleString() + ' FCFA',
-      date: new Date().toLocaleString('fr-FR'),
-      reference: null,
-      fees: null,
-      total: null,
-      status: null,
-      grossAmount: null,
-      feeAmount: null,
-      netAmount: null,
-      transactionId: null,
-      _pending: true,
-    });
-
-    setConfirmModalVisible(true);
-    setUseBiometric(isBiometricAvailable);
-    setPin('');
-  };
-
   const finishSend = () => {
+    hapticTap('medium');
     Alert.alert('C\'est fait !', 'Votre transfert a été effectué avec succès.');
     setReceiptModalVisible(false);
     setAmount('');
     setSelectedContact(null);
-    setManualPhone('');
     setTransactionDetails(null);
-    setBeneficiaryCheck(null);
-    navigation.goBack();
+    setPinRequired(false);
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'Home' }],
+    });
   };
 
-  const handleQRScan = () => { openQRScanner(); };
-
-  const handleManualQRInput = () => {
-    setQrInput('');
-    setQrModalVisible(true);
+  const startNewTransfer = () => {
+    hapticTap('light');
+    setReceiptModalVisible(false);
+    setAmount('');
+    setSelectedContact(null);
+    setTransactionDetails(null);
+    setPinRequired(false);
   };
 
-  const applyManualQRInput = async () => {
-    const val = (qrInput || '').replace(/\s/g, '').replace(/^\+?227/, '');
-    if (!val || val.length < 8) { Alert.alert('Attention', 'Veuillez entrer un numéro valide.'); return; }
+  // ═════════════════════════════════════════════════════════
+  // FILTRAGE
+  // ═════════════════════════════════════════════════════════
+  const filteredContacts = useMemo(() => {
+    const sorted = [...contacts].sort((a, b) => (b.isFavorite ? 1 : 0) - (a.isFavorite ? 1 : 0));
+    if (!pickerSearch.trim()) return sorted;
+    const q = pickerSearch.toLowerCase().trim();
+    return sorted.filter(c =>
+      String(c.name || '').toLowerCase().includes(q) ||
+      String(c.phone || '').includes(q)
+    );
+  }, [contacts, pickerSearch]);
 
-    const existingContact = contacts.find(c => c.phone === val);
-    if (existingContact) {
-      setSelectedContact(existingContact);
-      setManualPhone('');
-      Alert.alert('Contact trouvé', existingContact.name);
-    } else {
-      try {
-        const newContact = await API.addContact({
-          name: `QR-${val.slice(-4)}`,
-          phone: val,
-          avatar: 'QR',
-          color: pickRandomContactColor(),
-          isFavorite: true,
-        });
-        addContactSafely(newContact);
-        setSelectedContact(newContact);
-        setManualPhone('');
-      } catch (e) {
-        setSelectedContact({
-          id: `qr-${val}`,
-          name: `QR-${val.slice(-4)}`,
-          phone: val,
-          avatar: 'QR',
-          color: pickRandomContactColor(),
-          isFavorite: false,
-          isFromQR: true,
-        });
-        setManualPhone('');
-      }
-    }
+  const recentSuggestions = useMemo(() => {
+    if (!selectedContact) return [];
+    const clean = String(selectedContact.phone).replace(/\s/g, '').replace(/^\+?227/, '');
+    return Array.isArray(recentAmounts[clean]) ? recentAmounts[clean] : [];
+  }, [selectedContact, recentAmounts]);
 
-    setQrInput('');
-    setQrModalVisible(false);
-  };
+  const ctaLabel = (() => {
+    if (!selectedContact) return 'Choisir un destinataire';
+    if (numericAmount < 100) return 'Saisir un montant';
+    if (numericAmount > balance) return 'Solde insuffisant';
+    return `Envoyer ${numericAmount.toLocaleString('fr-FR')} FCFA`;
+  })();
 
-  const sortedContacts = [...contacts].sort((a, b) => (b.isFavorite ? 1 : 0) - (a.isFavorite ? 1 : 0));
-  const favoriteContacts = sortedContacts.filter(c => c.isFavorite);
+  const ctaDisabled = !canSend;
 
-  const modalWidth = width ? width - 40 : 320;
+  const ctaHint = (() => {
+    if (!ctaDisabled) return '';
+    if (!selectedContact) return 'Sélectionnez d\'abord un destinataire';
+    if (numericAmount === 0) return 'Saisissez un montant pour continuer';
+    if (numericAmount < 100) return 'Le montant minimum est de 100 FCFA';
+    if (numericAmount > balance) return 'Solde insuffisant pour ce montant';
+    return '';
+  })();
+
   const receiptModalWidth = width ? width - 24 : 340;
   const receiptMaxHeight = height ? Math.min(height * 0.94, height - 40) : 700;
 
-  if (isLoadingContacts) {
-    return (
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton} activeOpacity={0.7}>
-            <IconBack />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Envoyer de l'argent</Text>
-          <View style={{ width: 44 }} />
-        </View>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={COLORS.primary} />
-          <Text style={styles.loadingText}>Chargement…</Text>
-        </View>
-      </View>
-    );
-  }
-
-  const hasAmount = !!(amount && parseInt(amount) > 0);
-
-  const isBeneficiaryValid = (() => {
-    if (selectedContact) return true;
-    if (!manualPhone || manualPhone.length < 8) return false;
-    if (getContactFromPhone(manualPhone)) return true;
-    return !!(beneficiaryCheck && beneficiaryCheck.found === true);
-  })();
-
-  const canSend = isBeneficiaryValid && hasAmount;
-
   return (
-    <View style={styles.container}>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={0}
+    >
+      {/* ═══════════ BANNIÈRE FLOTTANTE PREMIUM ═══════════ */}
+      {toast && (
+        <Animated.View
+          style={[
+            styles.toastContainer,
+            {
+              backgroundColor: toast.type === 'error' ? COLORS.danger : COLORS.primary,
+              transform: [{
+                translateY: toastAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [-150, 0],
+                })
+              }],
+              opacity: toastAnim,
+            }
+          ]}
+        >
+          <View style={styles.toastIconWrap}>
+            <IconWarning color="#FFFFFF" size={20} />
+          </View>
+          <View style={styles.toastContent}>
+            <Text style={styles.toastTitle}>{toast.title}</Text>
+            <Text style={styles.toastMessage}>{toast.message}</Text>
+          </View>
+        </Animated.View>
+      )}
+
+      {/* ═══════════ HEADER ═══════════ */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton} activeOpacity={0.7}>
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          style={styles.backButton}
+          activeOpacity={0.7}
+        >
           <IconBack />
         </TouchableOpacity>
-        <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle}>Envoyer</Text>
-          <Text style={styles.headerSubtitle}>Transfert compte à compte</Text>
-        </View>
-        <View style={{ width: 44 }} />
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+      {/* ═══════════ CONTENU ═══════════ */}
+      <ScrollView
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: 120 + insets.bottom }]}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        <Text style={styles.label}>Envoyer à</Text>
 
-        <View style={styles.stepHeader}>
-          <View style={styles.stepBadge}><Text style={styles.stepBadgeText}>1</Text></View>
-          <Text style={styles.stepTitle}>À qui envoyez-vous ?</Text>
-        </View>
-
-        {/* Favoris (affichés uniquement s'il y en a) */}
-        {favoriteContacts.length > 0 && (
-          <>
-            <Text style={styles.favoritesLabel}>⭐ Favoris</Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={styles.contactsScroll}
-              contentContainerStyle={styles.contactsScrollContent}
-            >
-              {favoriteContacts.map((contact, index) => (
-                <TouchableOpacity
-                  key={`fav-${contact.id}-${index}`}
-                  style={[styles.contactCard, selectedContact?.id === contact.id && styles.contactCardSelected]}
-                  onPress={() => { setSelectedContact(contact); setManualPhone(''); }}
-                  activeOpacity={0.75}
-                >
-                  <View style={[styles.contactAvatar, { backgroundColor: contact.color }]}>
-                    <Text style={styles.contactAvatarText}>{contact.avatar}</Text>
-                  </View>
-                  <Text style={styles.contactName} numberOfLines={1}>{contact.name}</Text>
-                  <Text style={styles.contactPhone} numberOfLines={1}>{contact.phone}</Text>
-                  {contact.isFavorite && <View style={styles.favoriteStar}><IconStar filled={true} /></View>}
-                  {selectedContact?.id === contact.id && <View style={styles.checkBadge}><IconCheckSmall /></View>}
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </>
-        )}
-
-        <View style={styles.card}>
-          {selectedContact ? (
-            <View style={[styles.selectedContactContainer, selectedContact.isFromQR && styles.selectedContactContainerQR]}>
-              <View style={styles.selectedContactInfo}>
-                <View style={[styles.selectedContactAvatar, { backgroundColor: selectedContact.color }]}>
-                  <Text style={styles.selectedContactAvatarText}>{selectedContact.avatar}</Text>
-                </View>
-                <View style={styles.selectedContactDetails}>
-                  <View style={styles.selectedContactNameRow}>
-                    <Text style={styles.selectedContactName} numberOfLines={1}>{selectedContact.name}</Text>
-                    {selectedContact.isFromQR && <View style={styles.qrBadge}><Text style={styles.qrBadgeText}>QR ✓</Text></View>}
-                  </View>
-                  <Text style={styles.selectedContactPhone}>+227 {selectedContact.phone}</Text>
-                </View>
-              </View>
-
-              {/* ⭐ Bouton favori — uniquement si le contact n'est pas encore favori */}
-              {!isSelectedContactFavorite && (
-                <TouchableOpacity
-                  onPress={handleAddSelectedToFavorites}
-                  style={styles.favoriteToggleBtn}
-                  activeOpacity={0.75}
-                  accessibilityRole="button"
-                  accessibilityLabel="Ajouter ce contact aux favoris"
-                >
-                  <IconStar filled={false} />
-                </TouchableOpacity>
-              )}
-
-              <TouchableOpacity onPress={clearSelectedContact} style={styles.clearContactButton} activeOpacity={0.7}>
-                <IconClear />
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <>
-              <Text style={styles.inputLabel}>Numéro du bénéficiaire</Text>
-
-              {/* Input téléphone + icônes d'action collées */}
-              <View style={styles.manualPhoneRow}>
-                <View style={styles.manualPhoneWrapper}>
-                  <Text style={styles.phonePrefix}>+227</Text>
-                  <TextInput
-                    style={styles.manualPhoneInput}
-                    placeholder="93 45 22 71"
-                    placeholderTextColor={COLORS.textMuted}
-                    keyboardType="phone-pad"
-                    value={manualPhone}
-                    onChangeText={(text) => {
-                      setManualPhone(text);
-                      const contact = getContactFromPhone(text);
-                      setSelectedContact(contact || null);
-                    }}
-                  />
-                </View>
-
-                <View style={styles.inputActionsIcons}>
-                  <TouchableOpacity
-                    style={styles.miniIconButton}
-                    onPress={handleQRScan}
-                    activeOpacity={0.75}
-                    accessibilityRole="button"
-                    accessibilityLabel="Scanner un QR Code"
-                  >
-                    <IconQR color={COLORS.primary} />
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={styles.miniIconButton}
-                    onPress={openPhoneContacts}
-                    activeOpacity={0.75}
-                    accessibilityRole="button"
-                    accessibilityLabel="Choisir dans mes contacts"
-                  >
-                    <IconContact />
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              {beneficiaryCheck === 'loading' && (
-                <View style={styles.beneficiaryLoadingContainer}>
-                  <ActivityIndicator size="small" color={COLORS.primary} />
-                  <Text style={styles.beneficiaryLoadingText}>Vérification du bénéficiaire…</Text>
-                </View>
-              )}
-
-              {beneficiaryCheck && beneficiaryCheck.found === true && (
-                <View style={[styles.beneficiaryFoundContainer, beneficiaryCheck.isSelf && styles.beneficiaryFoundContainerSelf]}>
-                  <View style={styles.beneficiaryFoundHeader}>
-                    <View style={[styles.beneficiaryBadgeIcon, beneficiaryCheck.isSelf && { backgroundColor: '#DBEAFE' }]}>
-                      <Text style={{ fontSize: 14 }}>{beneficiaryCheck.isSelf ? 'ℹ️' : '✓'}</Text>
-                    </View>
-                    <Text style={[styles.beneficiaryFoundTitle, beneficiaryCheck.isSelf && styles.beneficiaryFoundTitleSelf]}>
-                      {beneficiaryCheck.isSelf ? 'C\'est votre propre numéro' : 'Compte NT Albey trouvé'}
-                    </Text>
-                  </View>
-                  <Text style={styles.beneficiaryFoundName}>
-                    {beneficiaryCheck.name || beneficiaryCheck.displayName || `+227 ${manualPhone}`}
+        <Animated.View style={{ transform: [{ scale: beneficiaryPulse }] }}>
+          <TouchableOpacity
+            style={[
+              styles.beneficiaryButton,
+              selectedContact && styles.beneficiaryButtonFilled,
+            ]}
+            onPress={openPicker}
+            activeOpacity={0.7}
+          >
+            {selectedContact ? (
+              <>
+                <View style={[styles.beneficiaryAvatar, { backgroundColor: selectedContact.color || COLORS.primary }]}>
+                  <Text style={styles.beneficiaryAvatarText}>
+                    {selectedContact.avatar || buildInitials(selectedContact.name)}
                   </Text>
-
-                  {/* ⭐ Prompt favori — seulement si le numéro n'est pas déjà favori */}
-                  {!isPhoneInFavorites(manualPhone) && !beneficiaryCheck.isSelf && (
-                    <TouchableOpacity
-                      style={styles.addFavoritePrompt}
-                      onPress={handleAddFoundToFavorites}
-                      activeOpacity={0.8}
-                      accessibilityRole="button"
-                      accessibilityLabel="Ajouter ce numéro aux favoris"
-                    >
-                      <IconStar filled={false} />
-                      <Text style={styles.addFavoritePromptText}>
-                        Ajouter aux favoris
-                      </Text>
-                    </TouchableOpacity>
-                  )}
                 </View>
-              )}
-
-              {beneficiaryCheck && beneficiaryCheck.found === false && (
-                <View style={styles.unknownBeneficiaryContainer}>
-                  <View style={styles.unknownHeader}>
-                    <Text style={styles.unknownIcon}>⚠️</Text>
-                    <Text style={styles.unknownBeneficiaryTitle}>Compte introuvable sur NT Albey</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.beneficiaryName} numberOfLines={1}>
+                    {selectedContact.name}
+                  </Text>
+                  <Text style={styles.beneficiaryPhone}>
+                    +227 {selectedContact.phone}
+                  </Text>
+                </View>
+                {selectedContact.isFavorite && (
+                  <View style={styles.favoriteBadge}>
+                    <IconStar filled={true} />
                   </View>
-                  <Text style={styles.unknownBeneficiaryText}>Ce numéro n'est pas (encore) enregistré.</Text>
+                )}
+                <IconArrowRight color={COLORS.primary} size={16} />
+              </>
+            ) : (
+              <>
+                <View style={styles.beneficiaryEmptyIcon}>
+                  <IconContact color={COLORS.primary} size={22} />
                 </View>
-              )}
-            </>
-          )}
-        </View>
+                <Text style={styles.beneficiaryEmptyText}>Choisir un destinataire</Text>
+                <IconArrowRight color={COLORS.primary} size={16} />
+              </>
+            )}
+          </TouchableOpacity>
+        </Animated.View>
 
-        <View style={styles.stepHeader}>
-          <View style={styles.stepBadge}><Text style={styles.stepBadgeText}>2</Text></View>
-          <Text style={styles.stepTitle}>Quel montant ?</Text>
-        </View>
+        <RecentNumbersBar
+          onSelectNumber={(num, label) => {
+            const existing = contacts.find((c) => String(c.phone).replace(/\D/g, '').endsWith(num));
+            if (existing) {
+              setSelectedContact(existing);
+            } else {
+              const display = label || ('+227 ' + num);
+              setSelectedContact({
+                id: 'recent-' + num,
+                name: display,
+                phone: num,
+                avatar: buildInitials(display),
+                color: COLORS.primary,
+                isFavorite: false,
+                isFromQR: false,
+              });
+            }
+          }}
+          currentValue={selectedContact?.phone || ''}
+        />
 
-        <View style={styles.card}>
-          <View style={styles.amountInputContainer}>
-            <TextInput
-              style={styles.amountInput}
-              placeholder="0"
-              placeholderTextColor={COLORS.textMuted}
-              keyboardType="numeric"
-              value={amount}
-              onChangeText={setAmount}
-              autoFocus={!amount}
-            />
-            <Text style={styles.currencySymbol}>FCFA</Text>
-          </View>
-
-          <View style={styles.suggestionsRow}>
-            {['5000', '10000', '25000', '50000'].map((sug, index) => (
-              <TouchableOpacity
-                key={`sug-${sug}-${index}`}
-                style={[styles.suggestionChip, amount === sug && styles.suggestionChipActive]}
-                onPress={() => setAmount(sug)}
-                activeOpacity={0.75}
-              >
-                <Text style={[styles.suggestionText, amount === sug && styles.suggestionTextActive]}>
-                  {parseInt(sug).toLocaleString()}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
+        <Text style={[styles.label, { marginTop: 28 }]}>Montant</Text>
 
         <TouchableOpacity
-          style={[styles.sendButton, !canSend && styles.sendButtonDisabled]}
-          onPress={handleSend}
-          disabled={!canSend}
-          activeOpacity={0.85}
+          style={[
+            styles.amountWrapper,
+            amountFocused && styles.amountWrapperFocused,
+            amountError && styles.amountWrapperError,
+          ]}
+          activeOpacity={0.9}
+          onPress={() => amountInputRef.current?.focus()}
         >
-          <View style={styles.sendButtonContent}>
-            <Text style={[styles.sendButtonText, !canSend && styles.sendButtonTextDisabled]}>
-              {selectedContact
-                ? `Envoyer à ${selectedContact.name.split(' ')[0]}`
-                : amount
-                  ? `Envoyer ${parseInt(amount).toLocaleString()} FCFA`
-                  : 'Envoyer'}
-            </Text>
-            {canSend && <View style={styles.sendIconCircle}><IconArrowRight /></View>}
-          </View>
+          {numericAmount === 0 && !amountFocused && (
+            <View style={styles.keyboardHintRow}>
+              <Text style={styles.keyboardHintIcon}>⌨️</Text>
+              <Text style={styles.keyboardHintLabel}>Touchez pour saisir</Text>
+            </View>
+          )}
+
+          {numericAmount === 0 ? (
+            <Text style={styles.amountEmptyState}>Combien ?</Text>
+          ) : (
+            <Animated.Text
+              style={[
+                styles.amountText,
+                amountError && styles.amountTextError,
+                { opacity: amountOpacity },
+              ]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+            >
+              {displayAmount}
+            </Animated.Text>
+          )}
+
+          <Text style={styles.amountCurrency}>FCFA</Text>
+
+          {amountFocused && numericAmount === 0 && (
+            <Animated.View style={[styles.customCaret, { opacity: caretOpacity }]} />
+          )}
+
+          <TextInput
+            ref={amountInputRef}
+            style={styles.amountHiddenInput}
+            value={amount}
+            onChangeText={(v) => {
+              const digits = v.replace(/[^\d]/g, '');
+              setAmount(digits);
+            }}
+            onFocus={() => setAmountFocused(true)}
+            onBlur={() => setAmountFocused(false)}
+            keyboardType="numeric"
+            maxLength={9}
+            caretHidden={true}
+            showSoftInputOnFocus={true}
+            selectionColor={COLORS.primary}
+          />
         </TouchableOpacity>
 
+        {amountError && (
+          <View style={styles.amountErrorRow}>
+            <Text style={styles.amountErrorText}>⚠️ {amountError}</Text>
+          </View>
+        )}
+
+        {selectedContact && recentSuggestions.length > 0 && !amountError && (
+          <View style={styles.recentAmountsRow}>
+            <Text style={styles.recentAmountsLabel}>Déjà envoyé</Text>
+            <View style={styles.recentAmountsChips}>
+              {recentSuggestions.map((v, idx) => (
+                <TouchableOpacity
+                  key={`recent-${idx}-${v}`}
+                  style={[
+                    styles.recentAmountChip,
+                    numericAmount === v && styles.recentAmountChipActive,
+                  ]}
+                  onPress={() => {
+                    hapticTap('light');
+                    setAmount(String(v));
+                  }}
+                  activeOpacity={0.75}
+                >
+                  <Text
+                    style={[
+                      styles.recentAmountChipText,
+                      numericAmount === v && styles.recentAmountChipTextActive,
+                    ]}
+                  >
+                    {v.toLocaleString('fr-FR')}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        )}
+
+        {!amountError && (
+          <Text style={styles.balanceHint}>
+            Solde disponible · {balance.toLocaleString('fr-FR')} FCFA
+          </Text>
+        )}
+
+        {pinRequired && (
+          <View style={styles.pinInline}>
+            <View style={styles.pinInlineHeader}>
+              <Text style={styles.pinInlineLabel}>Confirmez avec votre mot de passe</Text>
+              <Text style={styles.pinInlineCounter}>{pin.length}/20</Text>
+            </View>
+            <View style={styles.pinInlineRow}>
+              <TextInput
+                ref={pinInputRef}
+                style={styles.pinInlineInput}
+                placeholder="••••••••"
+                placeholderTextColor={COLORS.textMuted}
+                secureTextEntry={!pinVisible}
+                autoCapitalize="none"
+                autoCorrect={false}
+                maxLength={20}
+                value={pin}
+                onChangeText={setPin}
+                editable={!isVerifyingAuth && !isSending}
+                textAlign="center"
+              />
+              <TouchableOpacity
+                style={styles.pinInlineEye}
+                onPress={() => setPinVisible(v => !v)}
+                activeOpacity={0.7}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                {pinVisible ? <IconEyeOpen /> : <IconEyeClosed />}
+              </TouchableOpacity>
+            </View>
+            <View style={styles.pinInlineActions}>
+              <TouchableOpacity
+                style={styles.pinInlineCancel}
+                onPress={() => {
+                  setPinRequired(false);
+                  setPin('');
+                  Keyboard.dismiss();
+                }}
+                disabled={isVerifyingAuth || isSending}
+                activeOpacity={0.75}
+              >
+                <Text style={styles.pinInlineCancelText}>Annuler</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.pinInlineConfirm,
+                  (!pin || pin.length < 8 || isVerifyingAuth || isSending) && styles.pinInlineConfirmDisabled,
+                ]}
+                onPress={confirmWithPin}
+                disabled={!pin || pin.length < 8 || isVerifyingAuth || isSending}
+                activeOpacity={0.85}
+              >
+                {isVerifyingAuth || isSending ? (
+                  <ActivityIndicator color="#FFFFFF" size="small" />
+                ) : (
+                  <Text style={styles.pinInlineConfirmText}>Confirmer</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
       </ScrollView>
 
-      {/* MODAL SCANNER QR */}
-      <Modal visible={qrScannerVisible} animationType="fade" presentationStyle="fullScreen" statusBarTranslucent={true}
-        onRequestClose={() => { if (!isVerifyingQR) closeQRScanner(); }}>
+      {!pinRequired && (
+        <View style={[styles.ctaContainer, { paddingBottom: Math.max(insets.bottom, 14) + 12 }]}>
+          <TouchableOpacity
+            style={[styles.cta, ctaDisabled && styles.ctaDisabled]}
+            onPress={handleConfirm}
+            disabled={ctaDisabled}
+            activeOpacity={0.85}
+          >
+            {isSending || isVerifyingAuth ? (
+              <View style={styles.ctaContent}>
+                <ActivityIndicator color="#FFFFFF" size="small" />
+                <Text style={styles.ctaText}>
+                  {isSending ? 'Envoi en cours…' : 'Vérification…'}
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.ctaContent}>
+                {isBiometricAvailable && useBiometric && canSend && (
+                  <IconFingerprint color="#FFFFFF" size={20} />
+                )}
+                <Text style={[styles.ctaText, ctaDisabled && styles.ctaTextDisabled]}>
+                  {ctaLabel}
+                </Text>
+              </View>
+            )}
+          </TouchableOpacity>
+
+          {ctaHint ? (
+            <Text style={styles.ctaHintText}>{ctaHint}</Text>
+          ) : null}
+        </View>
+      )}
+
+      {/* ═══════════ BOTTOM SHEET PICKER ═══════════ */}
+      <Modal
+        visible={pickerVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={closePicker}
+      >
+        <View style={styles.sheetOverlay}>
+          <TouchableOpacity style={styles.sheetBackdrop} onPress={closePicker} activeOpacity={1} />
+          <Animated.View
+            style={[
+              styles.sheetContent,
+              { maxHeight: height * 0.85, transform: [{ translateY: sheetTranslateY }] },
+            ]}
+            {...sheetPanResponder.panHandlers}
+          >
+            <View style={styles.sheetHandle} />
+
+            <View style={styles.sheetHeader}>
+              <Text style={styles.sheetTitle}>À qui envoyer ?</Text>
+              <TouchableOpacity onPress={closePicker} style={styles.sheetCloseBtn} activeOpacity={0.7}>
+                <IconClose />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.quickActions}>
+              <TouchableOpacity
+                style={styles.quickActionBtn}
+                onPress={() => { closePicker(); openQRScanner(); }}
+                disabled={isVerifyingContact}
+                activeOpacity={0.75}
+              >
+                <IconQR color={COLORS.primary} size={20} />
+                <Text style={styles.quickActionLabel}>Scanner</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.quickActionBtn}
+                onPress={openPhoneContacts}
+                disabled={isVerifyingContact}
+                activeOpacity={0.75}
+              >
+                {isVerifyingContact ? (
+                  <ActivityIndicator size="small" color={COLORS.primary} />
+                ) : (
+                  <IconContact color={COLORS.primary} size={20} />
+                )}
+                <Text style={styles.quickActionLabel}>
+                  {isVerifyingContact ? 'Vérification…' : 'Répertoire'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.searchInputRow}>
+              <Text style={styles.phonePrefixSmall}>+227</Text>
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Saisir un numéro"
+                placeholderTextColor={COLORS.textMuted}
+                keyboardType="phone-pad"
+                value={manualPhone}
+                onChangeText={setManualPhone}
+                maxLength={15}
+              />
+              {manualPhone.length >= 8 && (
+                <TouchableOpacity
+                  style={styles.searchUseBtn}
+                  onPress={handleUseManualPhone}
+                  disabled={isVerifyingContact}
+                  activeOpacity={0.85}
+                >
+                  {isVerifyingContact ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <Text style={styles.searchUseBtnText}>OK</Text>
+                  )}
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {beneficiaryCheck === 'loading' && (
+              <View style={styles.verifRow}>
+                <ActivityIndicator size="small" color={COLORS.primary} />
+                <Text style={styles.verifText}>Vérification…</Text>
+              </View>
+            )}
+            {beneficiaryCheck?.found === true && (
+              <View style={styles.foundBanner}>
+                <Text style={styles.foundBannerText}>
+                  ✓ {beneficiaryCheck.name || beneficiaryCheck.displayName}
+                </Text>
+              </View>
+            )}
+            {beneficiaryCheck?.found === false && (
+              <View style={styles.notFoundBanner}>
+                <Text style={styles.notFoundBannerText}>⚠️ Numéro non enregistré sur NT Albey</Text>
+              </View>
+            )}
+
+            <TextInput
+              style={styles.contactSearchInput}
+              placeholder="Rechercher dans mes contacts…"
+              placeholderTextColor={COLORS.textMuted}
+              value={pickerSearch}
+              onChangeText={setPickerSearch}
+              autoCorrect={false}
+            />
+
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={{ paddingBottom: 20 }}
+            >
+              {isLoadingContacts ? (
+                <View style={styles.sheetLoading}>
+                  <ActivityIndicator size="large" color={COLORS.primary} />
+                </View>
+              ) : filteredContacts.length === 0 ? (
+                <View style={styles.sheetEmpty}>
+                  <Text style={styles.sheetEmptyEmoji}>👥</Text>
+                  <Text style={styles.sheetEmptyTitle}>
+                    {pickerSearch ? 'Aucun contact trouvé' : 'Aucun contact'}
+                  </Text>
+                </View>
+              ) : (
+                filteredContacts.map((contact, idx) => (
+                  <TouchableOpacity
+                    key={`contact-${contact.id}-${idx}`}
+                    style={styles.contactRow}
+                    onPress={() => handleSelectContact(contact)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={[styles.contactRowAvatar, { backgroundColor: contact.color || COLORS.primary }]}>
+                      <Text style={styles.contactRowAvatarText}>
+                        {contact.avatar || buildInitials(contact.name)}
+                      </Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <View style={styles.contactRowNameWrap}>
+                        <Text style={styles.contactRowName} numberOfLines={1}>
+                          {contact.name}
+                        </Text>
+                        {contact.isFavorite && (
+                          <View style={styles.contactRowStar}>
+                            <IconStar filled={true} />
+                          </View>
+                        )}
+                      </View>
+                      <Text style={styles.contactRowPhone}>+227 {contact.phone}</Text>
+                    </View>
+                  </TouchableOpacity>
+                ))
+              )}
+            </ScrollView>
+          </Animated.View>
+        </View>
+      </Modal>
+
+      {/* ═══════════ SCANNER QR ═══════════ */}
+      <Modal
+        visible={qrScannerVisible}
+        animationType="fade"
+        presentationStyle="fullScreen"
+        statusBarTranslucent
+        onRequestClose={() => { if (!isVerifyingQR) closeQRScanner(); }}
+      >
         <View style={styles.qrScannerContainer} onLayout={(e) => setQrContainerSize(e.nativeEvent.layout)}>
           {!qrPermission ? (
             <View style={styles.qrCenterContainer}>
@@ -1391,12 +1730,11 @@ ${details.transactionId ? `🆔 ID technique (API)  : ${details.transactionId}\n
             <View style={styles.qrCenterContainer}>
               <View style={styles.qrPermissionIcon}><Text style={{ fontSize: 48 }}>📷</Text></View>
               <Text style={styles.qrPermissionTitle}>Accès caméra requis</Text>
-              <Text style={styles.qrPermissionText}>Pour scanner un QR Code, NT Albey a besoin d'accéder à votre caméra.</Text>
+              <Text style={styles.qrPermissionText}>
+                Pour scanner un QR Code, NT Albey a besoin d'accéder à votre caméra.
+              </Text>
               <TouchableOpacity style={styles.qrPermissionButton} onPress={requestQrPermission} activeOpacity={0.85}>
                 <Text style={styles.qrPermissionButtonText}>Autoriser la caméra</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.qrManualLink} onPress={() => { closeQRScanner(); handleManualQRInput(); }}>
-                <Text style={styles.qrManualLinkText}>Ou saisir manuellement →</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.qrCancelLink} onPress={closeQRScanner}>
                 <Text style={styles.qrCancelLinkText}>Annuler</Text>
@@ -1427,15 +1765,13 @@ ${details.transactionId ? `🆔 ID technique (API)  : ${details.transactionId}\n
               {!isVerifyingQR && (
                 <View style={[styles.qrInstructionWrapper, { top: qrFrameTop + QR_FRAME_SIZE + 26 }]} pointerEvents="none">
                   <Text style={styles.qrInstructionTitle}>Alignez le QR Code</Text>
-                  <Text style={styles.qrInstructionSubtitle}>Le scan est automatique</Text>
                 </View>
               )}
               {isVerifyingQR && (
                 <View style={styles.qrVerifyingOverlay}>
                   <View style={styles.qrVerifyingBox}>
                     <ActivityIndicator size="large" color={COLORS.primary} />
-                    <Text style={styles.qrVerifyingText}>Vérification du compte…</Text>
-                    <Text style={styles.qrVerifyingSubtext}>Recherche dans la base</Text>
+                    <Text style={styles.qrVerifyingText}>Vérification…</Text>
                   </View>
                 </View>
               )}
@@ -1445,134 +1781,19 @@ ${details.transactionId ? `🆔 ID technique (API)  : ${details.transactionId}\n
                 </TouchableOpacity>
               )}
               {!isVerifyingQR && (
-                <>
-                  <View style={styles.qrTopTitle} pointerEvents="none">
-                    <Text style={styles.qrTopTitleText}>Scanner un QR Code</Text>
-                  </View>
-                  <TouchableOpacity style={styles.qrTorchButton} onPress={() => setQrTorchOn(v => !v)} activeOpacity={0.85}>
-                    {qrTorchOn ? <IconFlashOn /> : <IconFlashOff />}
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.qrManualBottomButton} onPress={() => { closeQRScanner(); handleManualQRInput(); }} activeOpacity={0.85}>
-                    <Text style={styles.qrManualBottomButtonText}>⌨️ Saisir manuellement</Text>
-                  </TouchableOpacity>
-                </>
+                <TouchableOpacity style={styles.qrTorchButton} onPress={() => setQrTorchOn(v => !v)} activeOpacity={0.85}>
+                  {qrTorchOn ? <IconFlashOn /> : <IconFlashOff />}
+                </TouchableOpacity>
               )}
             </>
           )}
         </View>
       </Modal>
 
-      {/* MODAL SAISIE MANUELLE QR */}
-      <Modal animationType="slide" transparent={true} visible={qrModalVisible} onRequestClose={() => setQrModalVisible(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { width: modalWidth }]}>
-            <View style={styles.modalDragHandle} />
-            <Text style={styles.modalTitle}>Saisie manuelle</Text>
-            <Text style={styles.modalSubtitle}>Entrez le numéro du bénéficiaire</Text>
-            <View style={styles.manualPhoneWrapper}>
-              <Text style={styles.phonePrefix}>+227</Text>
-              <TextInput style={styles.manualPhoneInput} placeholder="93123456" placeholderTextColor={COLORS.textMuted} keyboardType="phone-pad" value={qrInput} onChangeText={setQrInput} autoFocus />
-            </View>
-            <View style={styles.modalButtons}>
-              <TouchableOpacity style={[styles.modalButton, styles.cancelButton]} onPress={() => { setQrModalVisible(false); setQrInput(''); }} activeOpacity={0.75}>
-                <Text style={styles.cancelButtonText}>Annuler</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.modalButton, styles.confirmButton]} onPress={applyManualQRInput} activeOpacity={0.85}>
-                <Text style={styles.confirmButtonText}>Valider</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* MODAL CONFIRMATION */}
-      <Modal animationType="slide" transparent={true} visible={confirmModalVisible}
-        onRequestClose={() => { if (isSending || isVerifyingAuth) return; setConfirmModalVisible(false); setPin(''); setUseBiometric(isBiometricAvailable); }}>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.confirmModalContent, { width: modalWidth }]}>
-            <View style={styles.confirmIconWrapper}>
-              <Svg width="60" height="60" viewBox="0 0 100 100" fill="none">
-                <Circle cx="50" cy="50" r="45" fill={COLORS.primarySoft} />
-                <Path d="M30 50 L70 50" stroke={COLORS.accent} strokeWidth="4" strokeLinecap="round" />
-                <Path d="M60 40 L70 50 L60 60" stroke={COLORS.accent} strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-                <Circle cx="35" cy="50" r="6" fill={COLORS.primary} />
-                <Circle cx="65" cy="50" r="6" fill={COLORS.success} />
-              </Svg>
-            </View>
-            <Text style={styles.confirmTitle}>Confirmer l'envoi</Text>
-            <Text style={styles.confirmAmount}>{getDisplayAmount()}</Text>
-            <Text style={styles.confirmRecipient}>
-              à {selectedContact?.name || transactionDetails?.beneficiary || `+227 ${manualPhone}`}
-            </Text>
-            <View style={styles.confirmInfoBox}>
-              <View style={styles.confirmInfoRow}>
-                <Text style={styles.confirmInfoLabel}>Frais</Text>
-                <Text style={styles.confirmInfoValue}>Calculés par NT Albey</Text>
-              </View>
-            </View>
-            {isBiometricAvailable && useBiometric ? (
-              <>
-                <Text style={styles.confirmHintText}>Confirmez avec votre empreinte</Text>
-                <TouchableOpacity style={styles.biometricButton} onPress={authenticateWithBiometrics} activeOpacity={0.75} disabled={isSending || isVerifyingAuth}>
-                  {isSending || isVerifyingAuth ? <ActivityIndicator color={COLORS.primary} size="small" /> : <Image source={require('../assets/images/print.png')} style={styles.biometricIcon} />}
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.modalButtonFull, styles.confirmButton]} onPress={authenticateWithBiometrics} disabled={isSending || isVerifyingAuth} activeOpacity={0.85}>
-                  {isSending || isVerifyingAuth ? <ActivityIndicator color="#FFFFFF" size="small" /> : <Text style={styles.confirmButtonText}>Confirmer</Text>}
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.switchMethodButton} onPress={() => setUseBiometric(false)} disabled={isSending || isVerifyingAuth} activeOpacity={0.7}>
-                  <Text style={styles.switchMethodText}>🔑 Utiliser mon mot de passe</Text>
-                </TouchableOpacity>
-              </>
-            ) : (
-              <>
-                <Text style={styles.confirmHintText}>Entrez votre mot de passe (8 à 20 caractères)</Text>
-                <View style={styles.pinInputWrapper}>
-                  <TextInput
-                    style={styles.pinInput}
-                    placeholder="••••••••"
-                    placeholderTextColor={COLORS.textMuted}
-                    keyboardType="default"
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    secureTextEntry={!pinVisible}
-                    maxLength={20}
-                    value={pin}
-                    onChangeText={setPin}
-                    textAlign="center"
-                    editable={!isSending && !isVerifyingAuth}
-                  />
-                  <TouchableOpacity style={styles.pinEyeButton} onPress={() => setPinVisible((v) => !v)} disabled={isSending || isVerifyingAuth} activeOpacity={0.7} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-                    {pinVisible ? <IconEyeOpen /> : <IconEyeClosed />}
-                  </TouchableOpacity>
-                </View>
-                <TouchableOpacity style={styles.pinToggleLabelWrapper} onPress={() => setPinVisible((v) => !v)} disabled={isSending || isVerifyingAuth} activeOpacity={0.7}>
-                  <Text style={styles.pinToggleLabelText}>{pinVisible ? 'Masquer' : 'Afficher'} le mot de passe</Text>
-                </TouchableOpacity>
-                {isBiometricAvailable && (
-                  <TouchableOpacity style={styles.switchMethodButton} onPress={() => setUseBiometric(true)} disabled={isSending || isVerifyingAuth} activeOpacity={0.7}>
-                    <Text style={styles.switchMethodText}>👆 Utiliser mon empreinte</Text>
-                  </TouchableOpacity>
-                )}
-                <TouchableOpacity style={[styles.modalButtonFull, styles.confirmButton]} onPress={confirmWithPin} disabled={isSending || isVerifyingAuth} activeOpacity={0.85}>
-                  {isSending || isVerifyingAuth ? <ActivityIndicator color="#FFFFFF" size="small" /> : <Text style={styles.confirmButtonText}>Confirmer</Text>}
-                </TouchableOpacity>
-              </>
-            )}
-            <View style={styles.modalButtons}>
-              <TouchableOpacity style={[styles.modalButton, styles.cancelButton]}
-                onPress={() => { setConfirmModalVisible(false); setPin(''); setUseBiometric(isBiometricAvailable); }}
-                disabled={isSending || isVerifyingAuth} activeOpacity={0.75}>
-                <Text style={styles.cancelButtonText}>{isSending || isVerifyingAuth ? 'Envoi en cours…' : 'Annuler'}</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* ═══════════════ MODAL REÇU ═══════════════ */}
+      {/* ═══════════ MODAL REÇU ═══════════ */}
       <Modal
         animationType="slide"
-        transparent={true}
+        transparent
         visible={receiptModalVisible}
         onRequestClose={() => setReceiptModalVisible(false)}
       >
@@ -1601,7 +1822,6 @@ ${details.transactionId ? `🆔 ID technique (API)  : ${details.transactionId}\n
                 <>
                   <View style={styles.receiptCard}>
                     <Text style={styles.receiptSectionLabel}>PARTICIPANTS</Text>
-
                     <View style={styles.receiptParticipantCard}>
                       <View style={styles.receiptParticipantBadgeFrom}>
                         <Text style={styles.receiptParticipantBadgeText}>DE</Text>
@@ -1611,17 +1831,13 @@ ${details.transactionId ? `🆔 ID technique (API)  : ${details.transactionId}\n
                           {transactionDetails.senderName || 'Moi'}
                         </Text>
                         <Text style={styles.receiptParticipantPhone}>
-                          {transactionDetails.senderPhone
-                            ? `+227 ${transactionDetails.senderPhone}`
-                            : 'Mon compte'}
+                          {transactionDetails.senderPhone ? `+227 ${transactionDetails.senderPhone}` : 'Mon compte'}
                         </Text>
                       </View>
                     </View>
-
                     <View style={styles.receiptParticipantArrowWrap}>
                       <Text style={styles.receiptParticipantArrow}>↓</Text>
                     </View>
-
                     <View style={[styles.receiptParticipantCard, { marginBottom: 0 }]}>
                       <View style={styles.receiptParticipantBadgeTo}>
                         <Text style={styles.receiptParticipantBadgeText}>À</Text>
@@ -1639,7 +1855,6 @@ ${details.transactionId ? `🆔 ID technique (API)  : ${details.transactionId}\n
 
                   <View style={styles.receiptCard}>
                     <Text style={styles.receiptSectionLabel}>MONTANTS</Text>
-
                     <View style={styles.receiptRow}>
                       <Text style={styles.receiptLabel}>💰 Montant envoyé</Text>
                       <Text style={[styles.receiptValue, styles.receiptValueSent]}>
@@ -1721,6 +1936,14 @@ ${details.transactionId ? `🆔 ID technique (API)  : ${details.transactionId}\n
               </View>
 
               <TouchableOpacity
+                style={styles.receiptNewTransferButton}
+                onPress={startNewTransfer}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.receiptNewTransferText}>↻ Nouveau transfert</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
                 style={styles.receiptDoneButton}
                 onPress={finishSend}
                 activeOpacity={0.85}
@@ -1731,251 +1954,586 @@ ${details.transactionId ? `🆔 ID technique (API)  : ${details.transactionId}\n
           </View>
         </View>
       </Modal>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
 // ═══════════════════════════════════════════════════════════════
-// 🎨 STYLES PREMIUM
+// 🎨 STYLES
 // ═══════════════════════════════════════════════════════════════
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
-  scrollContent: { paddingBottom: 40 },
 
+  // ═══════════ TOAST PREMIUM ═══════════
+  toastContainer: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? 60 : 40,
+    left: 20,
+    right: 20,
+    borderRadius: 16,
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    zIndex: 9999,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    elevation: 10,
+  },
+  toastIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  toastContent: { flex: 1 },
+  toastTitle: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '800',
+    marginBottom: 2,
+    letterSpacing: -0.2,
+  },
+  toastMessage: {
+    color: 'rgba(255,255,255,0.9)',
+    fontSize: 13,
+    fontWeight: '500',
+    lineHeight: 18,
+  },
+
+  // Header
   header: {
+    paddingHorizontal: 16,
+    paddingTop: 52,
+    paddingBottom: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  backButton: {
+    width: 44, height: 44, borderRadius: 22,
+    backgroundColor: COLORS.surfaceAlt,
+    alignItems: 'center', justifyContent: 'center',
+  },
+
+  // Contenu
+  scrollContent: {
+    paddingHorizontal: 24,
+    paddingTop: 8,
+    paddingBottom: 120,
+  },
+
+  label: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: COLORS.textMuted,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    marginBottom: 12,
+  },
+
+  // Bénéficiaire
+  beneficiaryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: COLORS.surfaceAlt,
+    borderRadius: 18,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    borderStyle: 'dashed',
+  },
+  beneficiaryButtonFilled: {
+    backgroundColor: COLORS.primarySoft,
+    borderColor: COLORS.primary + '30',
+    borderStyle: 'solid',
+  },
+  beneficiaryAvatar: {
+    width: 44, height: 44, borderRadius: 22,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  beneficiaryAvatarText: {
+    color: '#FFFFFF', fontSize: 16, fontWeight: '800', letterSpacing: 0.5,
+  },
+  beneficiaryName: {
+    fontSize: 16, fontWeight: '700', color: COLORS.textPrimary, letterSpacing: -0.2,
+  },
+  beneficiaryPhone: {
+    fontSize: 12, color: COLORS.textSecondary, marginTop: 2, fontWeight: '500',
+  },
+  favoriteBadge: {
+    width: 20, height: 20, alignItems: 'center', justifyContent: 'center',
+  },
+  beneficiaryEmptyIcon: {
+    width: 44, height: 44, borderRadius: 22,
+    backgroundColor: COLORS.primarySoft,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  beneficiaryEmptyText: {
+    flex: 1, fontSize: 15, fontWeight: '600', color: COLORS.textSecondary,
+  },
+
+  // Montant
+  amountWrapper: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 24,
+    paddingHorizontal: 16,
+    marginTop: 4,
+    borderRadius: 20,
+    borderWidth: 2,
+    borderColor: COLORS.border,
+    borderStyle: 'dashed',
+    backgroundColor: COLORS.surfaceAlt,
+    position: 'relative',
+    minHeight: 140,
+  },
+  amountWrapperFocused: {
+    borderColor: COLORS.primary,
+    borderStyle: 'solid',
+    backgroundColor: COLORS.primarySoft,
+  },
+  amountWrapperError: {
+    borderColor: COLORS.danger,
+    backgroundColor: COLORS.dangerSoft,
+  },
+  amountText: {
+    fontSize: 68,
+    fontWeight: '800',
+    color: COLORS.textPrimary,
+    letterSpacing: -3,
+    lineHeight: 76,
+    textAlign: 'center',
+    includeFontPadding: false,
+  },
+  amountTextError: {
+    color: COLORS.danger,
+  },
+  amountEmptyState: {
+    fontSize: 34,
+    fontWeight: '700',
+    color: COLORS.textMuted,
+    letterSpacing: -0.5,
+    lineHeight: 44,
+    textAlign: 'center',
+  },
+  amountCurrency: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: COLORS.textMuted,
+    letterSpacing: 3,
+    textAlign: 'center',
+    marginTop: 4,
+  },
+  amountHiddenInput: {
+    position: 'absolute',
+    opacity: 0,
+    width: '100%',
+    height: '100%',
+    top: 0,
+    left: 0,
+  },
+  amountErrorRow: {
+    alignItems: 'center',
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  amountErrorText: {
+    fontSize: 12.5,
+    color: COLORS.danger,
+    fontWeight: '700',
+  },
+  balanceHint: {
+    fontSize: 11.5,
+    color: COLORS.textMuted,
+    fontWeight: '500',
+    textAlign: 'center',
+    marginTop: 14,
+  },
+
+  // Hint clavier
+  keyboardHintRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 10,
+  },
+  keyboardHintIcon: {
+    fontSize: 14,
+  },
+  keyboardHintLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.textMuted,
+    letterSpacing: 0.3,
+  },
+
+  // Caret custom
+  customCaret: {
+    position: 'absolute',
+    width: 3,
+    height: 56,
+    borderRadius: 2,
+    backgroundColor: COLORS.primary,
+    top: '50%',
+    marginTop: -28,
+  },
+
+  // Montants récents
+  recentAmountsRow: {
+    marginTop: 16,
+    alignItems: 'center',
+  },
+  recentAmountsLabel: {
+    fontSize: 10.5,
+    fontWeight: '700',
+    color: COLORS.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginBottom: 8,
+  },
+  recentAmountsChips: {
+    flexDirection: 'row',
+    gap: 8,
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+  },
+  recentAmountChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 16,
+    backgroundColor: COLORS.surfaceAlt,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+  },
+  recentAmountChipActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  recentAmountChipText: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+  },
+  recentAmountChipTextActive: {
+    color: '#FFFFFF',
+  },
+
+  // PIN inline
+  pinInline: {
+    marginTop: 32,
+    backgroundColor: COLORS.surfaceAlt,
+    borderRadius: 18,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: COLORS.borderSoft,
+  },
+  pinInlineHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingTop: 52,
-    paddingBottom: 16,
-    backgroundColor: COLORS.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.borderSoft,
-    ...Platform.select({
-      ios: { shadowColor: COLORS.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 8 },
-      android: { elevation: 2 },
-    }),
+    marginBottom: 12,
   },
-  backButton: {
-    width: 44, height: 44, borderRadius: 14,
-    backgroundColor: COLORS.surfaceAlt, alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1, borderColor: COLORS.borderSoft,
-  },
-  headerCenter: { alignItems: 'center', flex: 1 },
-  headerTitle: { fontSize: 18, fontWeight: '800', color: COLORS.textPrimary, letterSpacing: -0.3 },
-  headerSubtitle: { fontSize: 11, color: COLORS.textMuted, marginTop: 2, fontWeight: '500' },
-
-  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  loadingText: { marginTop: 16, color: COLORS.textSecondary, fontSize: 14, fontWeight: '500' },
-
-  stepHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, marginTop: 20, marginBottom: 10, gap: 10 },
-  stepBadge: { width: 26, height: 26, borderRadius: 13, backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center' },
-  stepBadgeText: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
-  stepTitle: { fontSize: 15, fontWeight: '800', color: COLORS.textPrimary, letterSpacing: -0.2 },
-
-  card: {
-    backgroundColor: COLORS.surface, marginHorizontal: 16, borderRadius: 20, padding: 18,
-    borderWidth: 1, borderColor: COLORS.borderSoft,
-    ...Platform.select({
-      ios: { shadowColor: COLORS.shadow, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 12 },
-      android: { elevation: 2 },
-    }),
-  },
-
-  // ─── Favoris ──────────────────────────────────────────────
-  favoritesLabel: {
-    fontSize: 11,
-    fontWeight: '800',
+  pinInlineLabel: {
+    fontSize: 12,
+    fontWeight: '700',
     color: COLORS.textSecondary,
-    letterSpacing: 0.6,
-    paddingHorizontal: 20,
-    marginBottom: 8,
-    textTransform: 'uppercase',
+    letterSpacing: 0.2,
+    flex: 1,
   },
-  contactsScroll: { maxHeight: 130 },
-  contactsScrollContent: { paddingLeft: 16, paddingRight: 8, gap: 10 },
-
-  contactCard: { width: 90, alignItems: 'center', backgroundColor: COLORS.surface, paddingVertical: 14, paddingHorizontal: 8, borderRadius: 16, borderWidth: 1, borderColor: COLORS.borderSoft, position: 'relative' },
-  contactCardSelected: { borderWidth: 2, borderColor: COLORS.primary, backgroundColor: COLORS.primarySoft },
-  contactAvatar: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
-  contactAvatarText: { color: '#FFF', fontSize: 17, fontWeight: '800' },
-  contactName: { fontSize: 12, fontWeight: '700', color: COLORS.textPrimary, textAlign: 'center' },
-  contactPhone: { fontSize: 10, color: COLORS.textMuted, marginTop: 2 },
-  favoriteStar: { position: 'absolute', top: 8, right: 8 },
-  checkBadge: { position: 'absolute', top: 6, left: 6, width: 22, height: 22, borderRadius: 11, backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: COLORS.surface },
-
-  // ─── Contact sélectionné ───────────────────────────────────
-  selectedContactContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: COLORS.primarySoft, borderRadius: 16, padding: 14, borderWidth: 1.5, borderColor: COLORS.primary + '30' },
-  selectedContactContainerQR: { borderColor: COLORS.primary, backgroundColor: COLORS.successSoft },
-  selectedContactInfo: { flexDirection: 'row', alignItems: 'center', flex: 1 },
-  selectedContactAvatar: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
-  selectedContactAvatarText: { color: '#FFF', fontSize: 18, fontWeight: '800' },
-  selectedContactDetails: { flex: 1 },
-  selectedContactNameRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 },
-  selectedContactName: { fontSize: 16, fontWeight: '800', color: COLORS.textPrimary, letterSpacing: -0.2 },
-  selectedContactPhone: { fontSize: 13, color: COLORS.textSecondary, fontWeight: '500' },
-  clearContactButton: { width: 32, height: 32, borderRadius: 16, backgroundColor: COLORS.surface, alignItems: 'center', justifyContent: 'center', marginLeft: 6 },
-  favoriteToggleBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#FFF9DB',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: 6,
-    borderWidth: 1,
-    borderColor: '#FFD70040',
+  pinInlineCounter: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: COLORS.textMuted,
   },
-  qrBadge: { backgroundColor: COLORS.primary, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
-  qrBadgeText: { color: '#FFFFFF', fontSize: 9, fontWeight: '800', letterSpacing: 0.5 },
-
-  // ─── Input téléphone + icônes d'action ────────────────────
-  inputLabel: { fontSize: 12, fontWeight: '700', color: COLORS.textSecondary, marginBottom: 8, letterSpacing: 0.2 },
-
-  manualPhoneRow: {
+  pinInlineRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    backgroundColor: COLORS.surface,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: COLORS.primary + '40',
+    paddingHorizontal: 12,
   },
-  manualPhoneWrapper: {
+  pinInlineInput: {
     flex: 1,
+    fontSize: 18,
+    fontWeight: '700',
+    letterSpacing: 4,
+    color: COLORS.textPrimary,
+    textAlign: 'center',
+    paddingVertical: 14,
+  },
+  pinInlineEye: {
+    padding: 6, marginLeft: 4,
+  },
+  pinInlineActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 14,
+  },
+  pinInlineCancel: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pinInlineCancelText: {
+    color: COLORS.textSecondary, fontSize: 14, fontWeight: '700',
+  },
+  pinInlineConfirm: {
+    flex: 1.4,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: COLORS.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...Platform.select({
+      ios: { shadowColor: COLORS.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 8 },
+      android: { elevation: 3 },
+    }),
+  },
+  pinInlineConfirmDisabled: {
+    backgroundColor: COLORS.border,
+    ...Platform.select({ ios: { shadowOpacity: 0 }, android: { elevation: 0 } }),
+  },
+  pinInlineConfirmText: {
+    color: '#FFFFFF', fontSize: 14, fontWeight: '800', letterSpacing: 0.2,
+  },
+
+  // CTA
+  ctaContainer: {
+    position: 'absolute',
+    left: 0, right: 0, bottom: 0,
+    paddingHorizontal: 24,
+    paddingBottom: Platform.OS === 'ios' ? 40 : 24,
+    paddingTop: 12,
+    backgroundColor: COLORS.background,
+  },
+  cta: {
+    backgroundColor: COLORS.primary,
+    borderRadius: 20,
+    paddingVertical: 20,
+    paddingHorizontal: 24,
+    ...Platform.select({
+      ios: { shadowColor: COLORS.primary, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.3, shadowRadius: 16 },
+      android: { elevation: 6 },
+    }),
+  },
+  ctaDisabled: {
+    backgroundColor: COLORS.surfaceAlt,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    ...Platform.select({ ios: { shadowOpacity: 0 }, android: { elevation: 0 } }),
+  },
+  ctaContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  ctaText: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: 0.3,
+  },
+  ctaTextDisabled: {
+    color: COLORS.textMuted,
+  },
+  ctaHintText: {
+    fontSize: 11.5,
+    color: COLORS.textMuted,
+    textAlign: 'center',
+    marginTop: 10,
+    fontWeight: '500',
+    letterSpacing: 0.2,
+    paddingHorizontal: 8,
+  },
+
+  // Bottom sheet picker
+  sheetOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(11,18,32,0.5)',
+    justifyContent: 'flex-end',
+  },
+  sheetBackdrop: { flex: 1 },
+  sheetContent: {
+    backgroundColor: COLORS.surface,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    paddingBottom: 24,
+  },
+  sheetHandle: {
+    width: 40, height: 4, borderRadius: 2,
+    backgroundColor: COLORS.border,
+    alignSelf: 'center', marginBottom: 20,
+  },
+  sheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 20,
+  },
+  sheetTitle: {
+    fontSize: 22, fontWeight: '800', color: COLORS.textPrimary, letterSpacing: -0.5,
+  },
+  sheetCloseBtn: {
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: COLORS.surfaceAlt,
+    alignItems: 'center', justifyContent: 'center',
+  },
+
+  quickActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 16,
+  },
+  quickActionBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: COLORS.surfaceAlt,
+    paddingVertical: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: COLORS.borderSoft,
+  },
+  quickActionLabel: {
+    fontSize: 13, fontWeight: '700', color: COLORS.textPrimary,
+  },
+
+  searchInputRow: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: COLORS.surfaceAlt,
     borderRadius: 14,
     borderWidth: 1.5,
     borderColor: COLORS.border,
+    marginBottom: 10,
     overflow: 'hidden',
   },
-  phonePrefix: {
-    fontSize: 15,
+  phonePrefixSmall: {
+    fontSize: 14,
     fontWeight: '800',
     color: COLORS.primary,
     paddingHorizontal: 12,
-    paddingVertical: 15,
+    paddingVertical: 14,
     backgroundColor: COLORS.primarySoft,
     borderRightWidth: 1,
     borderRightColor: COLORS.primary + '20',
   },
-  manualPhoneInput: {
+  searchInput: {
     flex: 1,
-    paddingVertical: 15,
+    paddingVertical: 14,
     paddingHorizontal: 12,
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
     color: COLORS.textPrimary,
-    letterSpacing: 0.5,
-    minWidth: 0,
   },
-
-  inputActionsIcons: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  miniIconButton: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
-    backgroundColor: COLORS.primarySoft,
+  searchUseBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: COLORS.primary,
+    marginRight: 6,
+    borderRadius: 10,
+    minWidth: 44,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: COLORS.primary + '25',
+  },
+  searchUseBtnText: {
+    color: '#FFFFFF', fontSize: 13, fontWeight: '800',
   },
 
-  // ─── Vérification bénéficiaire ─────────────────────────────
-  beneficiaryLoadingContainer: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12, paddingHorizontal: 6 },
-  beneficiaryLoadingText: { fontSize: 12, color: COLORS.textSecondary, fontStyle: 'italic', fontWeight: '500' },
-  beneficiaryFoundContainer: { backgroundColor: COLORS.successSoft, borderRadius: 14, padding: 14, marginTop: 12, borderWidth: 1, borderColor: COLORS.success + '50' },
-  beneficiaryFoundContainerSelf: { backgroundColor: '#DBEAFE', borderColor: '#3B82F650' },
-  beneficiaryFoundHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
-  beneficiaryBadgeIcon: { width: 22, height: 22, borderRadius: 11, backgroundColor: COLORS.success, alignItems: 'center', justifyContent: 'center' },
-  beneficiaryFoundTitle: { fontSize: 12, color: COLORS.primary, fontWeight: '800', letterSpacing: 0.2 },
-  beneficiaryFoundTitleSelf: { color: '#1565C0' },
-  beneficiaryFoundName: { fontSize: 16, color: COLORS.textPrimary, fontWeight: '800', letterSpacing: -0.2 },
-
-  // ⭐ Prompt "Ajouter aux favoris"
-  addFavoritePrompt: {
+  verifRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    alignSelf: 'flex-start',
-    marginTop: 12,
+    gap: 8,
+    paddingHorizontal: 4,
+    marginBottom: 8,
+  },
+  verifText: {
+    fontSize: 12, color: COLORS.textSecondary, fontStyle: 'italic', fontWeight: '500',
+  },
+  foundBanner: {
+    backgroundColor: COLORS.successSoft,
+    borderRadius: 10,
     paddingVertical: 8,
     paddingHorizontal: 12,
-    backgroundColor: COLORS.surface,
+    marginBottom: 8,
+  },
+  foundBannerText: {
+    fontSize: 12.5, fontWeight: '700', color: COLORS.primary,
+  },
+  notFoundBanner: {
+    backgroundColor: COLORS.dangerSoft,
     borderRadius: 10,
-    borderWidth: 1.5,
-    borderColor: '#FFD70060',
-    ...Platform.select({
-      ios: { shadowColor: '#F59E0B', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.15, shadowRadius: 4 },
-      android: { elevation: 1 },
-    }),
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginBottom: 8,
   },
-  addFavoritePromptText: {
-    fontSize: 12.5,
-    fontWeight: '800',
+  notFoundBannerText: {
+    fontSize: 12.5, fontWeight: '700', color: COLORS.danger,
+  },
+
+  contactSearchInput: {
+    backgroundColor: COLORS.surfaceAlt,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 14,
+    fontWeight: '500',
     color: COLORS.textPrimary,
-    letterSpacing: 0.1,
+    borderWidth: 1,
+    borderColor: COLORS.borderSoft,
+    marginBottom: 12,
   },
 
-  unknownBeneficiaryContainer: { backgroundColor: COLORS.warningSoft, borderRadius: 14, padding: 14, marginTop: 12, borderWidth: 1, borderColor: COLORS.warning + '50' },
-  unknownHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
-  unknownIcon: { fontSize: 16 },
-  unknownBeneficiaryTitle: { fontSize: 13, color: '#B45309', fontWeight: '800', flex: 1 },
-  unknownBeneficiaryText: { fontSize: 12, color: '#78350F', lineHeight: 18, fontWeight: '500' },
+  sheetLoading: { alignItems: 'center', paddingVertical: 40 },
+  sheetEmpty: { alignItems: 'center', paddingVertical: 40, paddingHorizontal: 20 },
+  sheetEmptyEmoji: { fontSize: 40, marginBottom: 10 },
+  sheetEmptyTitle: { fontSize: 15, fontWeight: '700', color: COLORS.textSecondary },
 
-  // ─── Montant ───────────────────────────────────────────────
-  amountInputContainer: { flexDirection: 'row', alignItems: 'flex-end', borderBottomWidth: 2, borderBottomColor: COLORS.primary, paddingBottom: 10, marginBottom: 20 },
-  amountInput: { flex: 1, fontSize: 42, fontWeight: '800', color: COLORS.textPrimary, padding: 0, letterSpacing: -1.5 },
-  currencySymbol: { fontSize: 16, fontWeight: '800', color: COLORS.primary, marginBottom: 6, marginLeft: 8, letterSpacing: 0.5 },
-
-  suggestionsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  suggestionChip: { flex: 1, minWidth: 70, backgroundColor: COLORS.surfaceAlt, paddingVertical: 10, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1.5, borderColor: COLORS.border, alignItems: 'center' },
-  suggestionChipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
-  suggestionText: { color: COLORS.textPrimary, fontSize: 13, fontWeight: '700', letterSpacing: -0.1 },
-  suggestionTextActive: { color: '#FFFFFF' },
-
-  // ─── Bouton envoyer ────────────────────────────────────────
-  sendButton: {
-    marginHorizontal: 16, marginTop: 24, borderRadius: 18, backgroundColor: COLORS.primary,
-    paddingVertical: 18, paddingHorizontal: 22,
-    ...Platform.select({
-      ios: { shadowColor: COLORS.primary, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.3, shadowRadius: 16 },
-      android: { elevation: 6 },
-    }),
+  contactRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.borderSoft,
   },
-  sendButtonDisabled: { backgroundColor: COLORS.border, ...Platform.select({ ios: { shadowOpacity: 0 }, android: { elevation: 0 } }) },
-  sendButtonContent: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  sendButtonText: { fontSize: 17, fontWeight: '800', color: '#FFFFFF', letterSpacing: -0.2, flex: 1 },
-  sendButtonTextDisabled: { color: COLORS.textMuted },
-  sendIconCircle: { width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(255,255,255,0.22)', alignItems: 'center', justifyContent: 'center' },
-
-  // ─── Modales ───────────────────────────────────────────────
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(15,23,42,0.55)', justifyContent: 'center', alignItems: 'center' },
-  modalContent: { backgroundColor: COLORS.surface, borderRadius: 24, padding: 22 },
-  modalDragHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: COLORS.border, alignSelf: 'center', marginBottom: 16 },
-  modalTitle: { fontSize: 20, fontWeight: '800', color: COLORS.textPrimary, textAlign: 'center', letterSpacing: -0.3 },
-  modalSubtitle: { fontSize: 13, color: COLORS.textSecondary, textAlign: 'center', marginTop: 4, marginBottom: 20 },
-
-  modalButtons: { flexDirection: 'row', gap: 10, marginTop: 4, width: '100%' },
-  modalButton: { flex: 1, paddingVertical: 14, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  modalButtonFull: { width: '100%', paddingVertical: 14, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginTop: 8 },
-
-  cancelButton: { backgroundColor: COLORS.surfaceAlt, borderWidth: 1, borderColor: COLORS.border },
-  cancelButtonText: { color: COLORS.textSecondary, fontSize: 15, fontWeight: '700' },
-  confirmButton: {
-    backgroundColor: COLORS.primary,
-    ...Platform.select({
-      ios: { shadowColor: COLORS.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 8 },
-      android: { elevation: 3 },
-    }),
+  contactRowAvatar: {
+    width: 44, height: 44, borderRadius: 22,
+    alignItems: 'center', justifyContent: 'center',
   },
-  confirmButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800', letterSpacing: 0.2 },
+  contactRowAvatarText: {
+    color: '#FFFFFF', fontSize: 15, fontWeight: '800',
+  },
+  contactRowNameWrap: {
+    flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2,
+  },
+  contactRowName: {
+    fontSize: 14.5, fontWeight: '700', color: COLORS.textPrimary, letterSpacing: -0.1,
+  },
+  contactRowStar: { width: 12, height: 12 },
+  contactRowPhone: {
+    fontSize: 11.5, color: COLORS.textMuted, fontWeight: '500',
+  },
 
-  // ─── QR Scanner ────────────────────────────────────────────
+  // QR Scanner
   qrScannerContainer: { flex: 1, backgroundColor: '#000', position: 'relative', overflow: 'hidden' },
   qrCenterContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, backgroundColor: '#000' },
   qrLoadingText: { marginTop: 14, color: '#94A3B8', fontSize: 14 },
@@ -1984,8 +2542,6 @@ const styles = StyleSheet.create({
   qrPermissionText: { fontSize: 14, color: '#94A3B8', textAlign: 'center', marginBottom: 24, lineHeight: 21 },
   qrPermissionButton: { backgroundColor: COLORS.primary, paddingVertical: 15, paddingHorizontal: 32, borderRadius: 14, alignItems: 'center', marginBottom: 14 },
   qrPermissionButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
-  qrManualLink: { padding: 8 },
-  qrManualLinkText: { color: '#00E676', fontSize: 14, fontWeight: '700' },
   qrCancelLink: { marginTop: 10, padding: 8 },
   qrCancelLinkText: { color: '#94A3B8', fontSize: 13 },
   qrDark: { position: 'absolute', backgroundColor: 'rgba(0,0,0,0.72)' },
@@ -1997,44 +2553,15 @@ const styles = StyleSheet.create({
   qrCornerBR: { bottom: 0, right: 0, borderBottomWidth: 4, borderRightWidth: 4, borderBottomRightRadius: 20 },
   qrScanLine: { position: 'absolute', left: 10, right: 10, top: 0, height: 3, borderRadius: 2, backgroundColor: '#00E676', shadowColor: '#00E676', shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.9, shadowRadius: 10, elevation: 8 },
   qrInstructionWrapper: { position: 'absolute', left: 0, right: 0, alignItems: 'center' },
-  qrInstructionTitle: { color: '#FFFFFF', fontSize: 16, fontWeight: '800', letterSpacing: 0.3 },
-  qrInstructionSubtitle: { color: 'rgba(255,255,255,0.7)', fontSize: 12, marginTop: 4 },
+  qrInstructionTitle: { color: '#FFFFFF', fontSize: 15, fontWeight: '700', letterSpacing: 0.3 },
   qrVerifyingOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.85)', alignItems: 'center', justifyContent: 'center', zIndex: 50 },
-  qrVerifyingBox: { backgroundColor: '#FFFFFF', borderRadius: 20, padding: 28, alignItems: 'center', minWidth: 240 },
-  qrVerifyingText: { fontSize: 15, fontWeight: '800', color: COLORS.textPrimary, marginTop: 16, textAlign: 'center' },
-  qrVerifyingSubtext: { fontSize: 12, color: COLORS.textMuted, marginTop: 6, textAlign: 'center' },
+  qrVerifyingBox: { backgroundColor: '#FFFFFF', borderRadius: 20, padding: 28, alignItems: 'center', minWidth: 200 },
+  qrVerifyingText: { fontSize: 14, fontWeight: '700', color: COLORS.textPrimary, marginTop: 16, textAlign: 'center' },
   qrCloseButton: { position: 'absolute', top: 52, left: 20, width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)', zIndex: 20 },
-  qrTopTitle: { position: 'absolute', top: 64, left: 0, right: 0, alignItems: 'center', zIndex: 10 },
-  qrTopTitleText: { color: '#FFFFFF', fontSize: 16, fontWeight: '800', letterSpacing: 0.4, textShadowColor: 'rgba(0,0,0,0.5)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4 },
-  qrTorchButton: { position: 'absolute', bottom: 120, width: 56, height: 56, borderRadius: 28, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)', alignSelf: 'center', left: '50%', marginLeft: -28 },
-  qrManualBottomButton: { position: 'absolute', bottom: 50, alignSelf: 'center', left: '50%', marginLeft: -110, width: 220, paddingVertical: 12, borderRadius: 30, backgroundColor: 'rgba(255,255,255,0.12)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)', alignItems: 'center', justifyContent: 'center' },
-  qrManualBottomButtonText: { color: '#FFFFFF', fontSize: 14, fontWeight: '800', letterSpacing: 0.3 },
+  qrTorchButton: { position: 'absolute', bottom: 60, width: 56, height: 56, borderRadius: 28, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)', alignSelf: 'center', left: '50%', marginLeft: -28 },
 
-  // ─── Modal Confirmation ────────────────────────────────────
-  confirmModalContent: { backgroundColor: COLORS.surface, borderRadius: 24, padding: 24, alignItems: 'center' },
-  confirmIconWrapper: { marginBottom: 16 },
-  confirmTitle: { fontSize: 18, fontWeight: '800', color: COLORS.textPrimary, letterSpacing: -0.2, marginBottom: 6 },
-  confirmAmount: { fontSize: 26, fontWeight: '800', color: COLORS.primary, letterSpacing: -0.5, marginBottom: 4 },
-  confirmRecipient: { fontSize: 14, color: COLORS.textSecondary, fontWeight: '600', marginBottom: 18, textAlign: 'center' },
-  confirmInfoBox: { backgroundColor: COLORS.surfaceAlt, borderRadius: 12, padding: 12, width: '100%', marginBottom: 18, borderWidth: 1, borderColor: COLORS.borderSoft },
-  confirmInfoRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  confirmInfoLabel: { fontSize: 12, color: COLORS.textSecondary, fontWeight: '600' },
-  confirmInfoValue: { fontSize: 12, color: COLORS.textPrimary, fontWeight: '700' },
-  confirmHintText: { fontSize: 13, fontWeight: '700', color: COLORS.textSecondary, marginBottom: 12 },
-
-  pinInputWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.surfaceAlt, borderRadius: 14, borderWidth: 1.5, borderColor: COLORS.primary + '40', paddingHorizontal: 12, marginBottom: 6, width: '100%' },
-  pinInput: { flex: 1, fontSize: 18, fontWeight: '700', letterSpacing: 4, color: COLORS.textPrimary, textAlign: 'center', paddingVertical: 14 },
-  pinEyeButton: { padding: 8, marginLeft: 4, alignItems: 'center', justifyContent: 'center' },
-  pinToggleLabelWrapper: { alignSelf: 'center', paddingVertical: 4, paddingHorizontal: 8, marginBottom: 8 },
-  pinToggleLabelText: { fontSize: 12, fontWeight: '700', color: COLORS.primary, textDecorationLine: 'underline' },
-
-  biometricButton: { backgroundColor: COLORS.primarySoft, width: 76, height: 76, borderRadius: 38, alignItems: 'center', justifyContent: 'center', alignSelf: 'center', marginVertical: 4, borderWidth: 2, borderColor: COLORS.primary + '25' },
-  biometricIcon: { width: 44, height: 44, resizeMode: 'contain', tintColor: COLORS.primary },
-  switchMethodButton: { marginVertical: 10, paddingVertical: 6 },
-  switchMethodText: { color: COLORS.primary, fontSize: 13, fontWeight: '700', textDecorationLine: 'underline' },
-
-  // ─── Reçu ──────────────────────────────────────────────────
-  receiptOverlay: { flex: 1, backgroundColor: 'rgba(15,23,42,0.6)', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 12, paddingTop: 40, paddingBottom: 30 },
+  // Reçu
+  receiptOverlay: { flex: 1, backgroundColor: 'rgba(11,18,32,0.6)', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 12, paddingTop: 40, paddingBottom: 30 },
   receiptModalContent: { backgroundColor: COLORS.surface, borderRadius: 24, paddingTop: 18, paddingHorizontal: 18, paddingBottom: 0, overflow: 'hidden', flexDirection: 'column' },
   receiptHeader: { alignItems: 'center', marginBottom: 10, flexShrink: 0 },
   receiptIcon: { width: 50, height: 50, borderRadius: 25, backgroundColor: COLORS.successSoft, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
@@ -2055,7 +2582,6 @@ const styles = StyleSheet.create({
   receiptValueFees: { color: COLORS.danger, fontWeight: '700' },
   receiptValueNet: { color: COLORS.success, fontWeight: '700' },
   receiptValueTotal: { fontSize: 14, fontWeight: '800', color: COLORS.primary },
-
   receiptParticipantCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.surface, borderRadius: 10, paddingVertical: 8, paddingHorizontal: 10, borderWidth: 1, borderColor: COLORS.borderSoft, marginBottom: 4 },
   receiptParticipantBadgeFrom: { width: 30, height: 30, borderRadius: 15, backgroundColor: COLORS.primarySoft, alignItems: 'center', justifyContent: 'center', marginRight: 10 },
   receiptParticipantBadgeTo: { width: 30, height: 30, borderRadius: 15, backgroundColor: COLORS.accentSoft, alignItems: 'center', justifyContent: 'center', marginRight: 10 },
@@ -2065,7 +2591,6 @@ const styles = StyleSheet.create({
   receiptParticipantPhone: { fontSize: 11, fontWeight: '600', color: COLORS.textSecondary, letterSpacing: 0.2 },
   receiptParticipantArrowWrap: { alignItems: 'center', marginVertical: 1, marginBottom: 4 },
   receiptParticipantArrow: { fontSize: 12, color: COLORS.textMuted, fontWeight: '800' },
-
   receiptCodeCard: { backgroundColor: COLORS.accentSoft, borderRadius: 14, padding: 12, marginBottom: 8, alignItems: 'center', borderWidth: 1, borderColor: COLORS.accent + '25' },
   receiptCodeHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 },
   receiptCodeLabel: { fontSize: 9, color: '#7A4A1A', textTransform: 'uppercase', letterSpacing: 1.4, fontWeight: '800' },
@@ -2074,14 +2599,28 @@ const styles = StyleSheet.create({
   receiptUuidLabel: { fontSize: 8.5, color: '#7A4A1A', marginBottom: 3, textTransform: 'uppercase', letterSpacing: 1.2, fontWeight: '700', opacity: 0.7 },
   receiptUuidValue: { fontSize: 9.5, color: '#7A4A1A', fontFamily: Platform.OS === 'ios' ? 'Courier New' : 'monospace', textAlign: 'center', paddingHorizontal: 6, opacity: 0.85 },
   receiptDate: { textAlign: 'center', fontSize: 10.5, color: COLORS.textMuted, marginBottom: 2, fontWeight: '600' },
-
   receiptButtons: { flexDirection: 'row', gap: 8, marginBottom: 8 },
   receiptButton: { flex: 1, paddingVertical: 12, borderRadius: 12, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6 },
   receiptCopyButton: { backgroundColor: COLORS.primarySoft, borderWidth: 1.5, borderColor: COLORS.primary + '30' },
   receiptCopyButtonText: { fontSize: 13, fontWeight: '800', color: COLORS.primary },
   receiptShareButton: { backgroundColor: COLORS.accentSoft, borderWidth: 1.5, borderColor: COLORS.accent + '30' },
   receiptShareButtonText: { fontSize: 13, fontWeight: '800', color: COLORS.accent },
-
+  receiptNewTransferButton: {
+    backgroundColor: COLORS.surfaceAlt,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  receiptNewTransferText: {
+    color: COLORS.primary,
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+  },
   receiptDoneButton: {
     backgroundColor: COLORS.primary,
     paddingVertical: 14,

@@ -2,18 +2,11 @@
   "expo": {
     "name": "NT Albey",
     "slug": "NTAlbey",
+    "scheme": "ntalbey",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.jpg",
+    "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
-    },
-    "assetBundlePatterns": [
-      "**/*"
-    ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.archiid.NTAlbey",
@@ -22,14 +15,14 @@
         "NSPhotoLibraryUsageDescription": "NT Albey a besoin d'accéder à votre galerie pour importer des images.",
         "NSFaceIDUsageDescription": "NT Albey utilise Face ID pour sécuriser l'accès à votre compte.",
         "NSAppTransportSecurity": {
-          "NSAllowsArbitraryLoads": false
+          "NSAllowsArbitraryLoads": true
         }
       }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundImage": "./assets/transparent-bg.png"
+        "backgroundColor": "#ffffff"
       },
       "package": "com.archiid.NTAlbey",
       "versionCode": 1,
@@ -41,7 +34,12 @@
         "android.permission.WRITE_CONTACTS",
         "android.permission.USE_BIOMETRIC",
         "android.permission.USE_FINGERPRINT"
-      ]
+      ],
+      "androidNavigationBar": {
+        "visible": "always",
+        "barStyle": "dark-content",
+        "backgroundColor": "#ffffff"
+      }
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -64,8 +62,6 @@
       "expo-asset",
       "expo-sharing",
       "expo-status-bar",
-      "expo-video",
-      "expo-audio",
       [
         "expo-local-authentication",
         {

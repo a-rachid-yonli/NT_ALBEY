@@ -1,13 +1,8 @@
-// screens/QRScreen.js - Scanner uniquement
-// ✨ v2 : Suppression de l'onglet "Mon QR" — le QR est maintenant sur HomeScreen
-//         → Seul le scanner reste ici
-import React, { useState, useRef, useEffect } from 'react';
+// screens/QRScreen.js - Mon QR (QR SEUL) + Scanner
+// ✨ v4 : Onglet "Mon QR" → UNIQUEMENT le QR Code (aucun texte, aucune info)
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
-  View,
-  Text,
-  TouchableOpacity,
   StyleSheet,
-  Alert,
   Modal,
   Share,
   useWindowDimensions,
@@ -17,13 +12,16 @@ import {
   Animated,
   Easing,
   StatusBar,
+  AppState,
 } from 'react-native';
 import Svg, { Path, Circle, Rect } from 'react-native-svg';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { LinearGradient } from 'expo-linear-gradient';
+import QRCode from 'react-native-qrcode-svg';
 import MainLayout from '../components/MainLayout';
-import { useTranslation } from '../context/LanguageContext';
-import { decodeQRData, QR_PREFIX } from '../utils/qrUtils';
+import { useTranslation, TranslatedText as Text, TranslatedAlert as Alert, ThemedView as View, ThemedTouchableOpacity as TouchableOpacity } from '../context/LanguageContext';
+import { API } from '../services/api';
+import { decodeQRData, encodeQRData, QR_PREFIX } from '../utils/qrUtils';
 
 // ═══════════════════════════════════════════════════════════
 // 🎨 PALETTE
@@ -50,6 +48,8 @@ const COLORS = {
   warningSoft:  '#FEF3C7',
   shadow:       '#0F172A',
 };
+
+const QR_AUTO_REGEN_INTERVAL_MS = 4 * 60 * 1000;
 
 // ============================================================
 // ICÔNES
@@ -91,8 +91,133 @@ const IconCheck = () => (
   </Svg>
 );
 
+const IconQRTab = ({ color = COLORS.primary }) => (
+  <Svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+    <Rect x="3" y="3" width="7" height="7" rx="1" stroke={color} strokeWidth="1.8" />
+    <Rect x="14" y="3" width="7" height="7" rx="1" stroke={color} strokeWidth="1.8" />
+    <Rect x="3" y="14" width="7" height="7" rx="1" stroke={color} strokeWidth="1.8" />
+    <Path d="M14 14h3v3h-3zM20 14v3M14 20h3M20 19.5v1.5" stroke={color} strokeWidth="1.8" strokeLinecap="round" />
+  </Svg>
+);
+
+const IconScanTab = ({ color = COLORS.primary }) => (
+  <Svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+    <Path d="M3 7V5a2 2 0 012-2h2M17 3h2a2 2 0 012 2v2M21 17v2a2 2 0 01-2 2h-2M7 21H5a2 2 0 01-2-2v-2" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    <Path d="M3 12h18" stroke={color} strokeWidth="2" strokeLinecap="round" />
+  </Svg>
+);
+
 // ============================================================
-// SCANNER
+// MON QR — QR SEUL, RIEN D'AUTRE
+// ============================================================
+const MyQRTab = () => {
+  const { width } = useWindowDimensions();
+  const [qrValue, setQrValue] = useState('');
+  const [userName, setUserName] = useState('Client');
+  const [userPhone, setUserPhone] = useState('');
+
+  const qrInitializedRef = useRef(false);
+  const qrRegenTimerRef = useRef(null);
+  const appStateRef = useRef(AppState.currentState);
+
+  const qrSize = Math.min(280, Math.max(200, Math.floor(width * 0.7)));
+
+  const generateMyQR = useCallback((user) => {
+    if (!user?.phone) return;
+    try {
+      const encrypted = encodeQRData({
+        type: 'ntalbey',
+        subtype: 'receive',
+        phone: String(user.phone).replace(/\s/g, '').replace(/^\+?227/, ''),
+        name: user.name || undefined,
+      });
+      setQrValue(encrypted);
+    } catch (e) {
+      if (__DEV__) console.log('❌ [QRScreen] Erreur génération QR:', e?.message);
+    }
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const user = await API.getCurrentUser();
+        if (!mounted) return;
+        const phone = user?.phone || '';
+        const name = user?.name || 'Client';
+        setUserPhone(phone);
+        setUserName(name);
+        if (!qrInitializedRef.current && phone) {
+          qrInitializedRef.current = true;
+          generateMyQR({ name, phone });
+        }
+      } catch (e) {
+        if (__DEV__) console.log('❌ [QRScreen] Erreur chargement user:', e?.message);
+      }
+    })();
+    return () => { mounted = false; };
+  }, [generateMyQR]);
+
+  useEffect(() => {
+    if (!userPhone) return;
+    if (qrRegenTimerRef.current) clearInterval(qrRegenTimerRef.current);
+    qrRegenTimerRef.current = setInterval(() => {
+      generateMyQR({ name: userName, phone: userPhone });
+    }, QR_AUTO_REGEN_INTERVAL_MS);
+    return () => {
+      if (qrRegenTimerRef.current) {
+        clearInterval(qrRegenTimerRef.current);
+        qrRegenTimerRef.current = null;
+      }
+    };
+  }, [userPhone, userName, generateMyQR]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      const prevState = appStateRef.current;
+      appStateRef.current = nextState;
+      if (prevState !== 'active' && nextState === 'active') {
+        if (userPhone && userName) {
+          generateMyQR({ name: userName, phone: userPhone });
+        }
+      }
+    });
+    return () => subscription.remove();
+  }, [userPhone, userName, generateMyQR]);
+
+  if (!qrValue) {
+    return (
+      <View style={styles.myQrContainer}>
+        <View style={styles.myQrCard}>
+          <View style={styles.qrLoading}>
+            <ActivityIndicator size="large" color={COLORS.primary} />
+          </View>
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.myQrContainer}>
+      <View style={styles.myQrCard}>
+        <QRCode
+          value={qrValue}
+          size={qrSize}
+          color={COLORS.textPrimary}
+          backgroundColor="#FFFFFF"
+          logo={require('../assets/images/logo-carre.png')}
+          logoSize={qrSize * 0.20}
+          logoBackgroundColor="#FFFFFF"
+          logoBorderRadius={10}
+          logoMargin={4}
+        />
+      </View>
+    </View>
+  );
+};
+
+// ============================================================
+// SCANNER — Onglet "Scanner"
 // ============================================================
 const QRScannerTab = ({ navigation }) => {
   const { t } = useTranslation();
@@ -133,7 +258,6 @@ const QRScannerTab = ({ navigation }) => {
     if (decrypted && decrypted.type === 'ntalbey') {
       return { kind: 'ntalbey', ...decrypted, raw };
     }
-
     try {
       const parsed = JSON.parse(raw);
       if (parsed && (parsed.type === 'ntalbey' || parsed.type === 'phone' || parsed.phone)) {
@@ -141,15 +265,12 @@ const QRScannerTab = ({ navigation }) => {
       }
       return { kind: 'json', raw, parsed };
     } catch (_) {}
-
     const cleaned = String(raw).replace(/[\s\-()]/g, '');
     if (/^\+?\d{8,15}$/.test(cleaned)) return { kind: 'phone', phone: cleaned, raw };
     if (/^https?:\/\//i.test(raw)) return { kind: 'url', url: raw, raw };
-
     if (typeof raw === 'string' && raw.startsWith(QR_PREFIX)) {
       return { kind: 'ntalbey_invalid', raw };
     }
-
     return { kind: 'text', raw };
   };
 
@@ -172,11 +293,9 @@ const QRScannerTab = ({ navigation }) => {
   const handleSendMoney = (data) => {
     const phone = typeof data === 'string' ? data : data?.phone;
     if (!phone) return;
-
     const name = typeof data === 'object' ? data?.name : undefined;
     const amount = typeof data === 'object' ? data?.amount : undefined;
     const note = typeof data === 'object' ? data?.note : undefined;
-
     closeResult();
     navigation.navigate('SendMoney', {
       prefilledPhone: phone,
@@ -224,11 +343,7 @@ const QRScannerTab = ({ navigation }) => {
         <Text style={styles.permissionText}>
           Pour scanner un QR Code, NT Albey a besoin d'accéder à votre caméra.
         </Text>
-        <TouchableOpacity
-          style={styles.primaryButton}
-          onPress={requestPermission}
-          activeOpacity={0.85}
-        >
+        <TouchableOpacity style={styles.primaryButton} onPress={requestPermission} activeOpacity={0.85}>
           <Text style={styles.primaryButtonText}>Autoriser la caméra</Text>
         </TouchableOpacity>
       </View>
@@ -366,28 +481,16 @@ const QRScannerTab = ({ navigation }) => {
             )}
 
             <View style={styles.resultButtons}>
-              <TouchableOpacity
-                style={styles.actionSecondary}
-                onPress={handleShare}
-                activeOpacity={0.75}
-              >
+              <TouchableOpacity style={styles.actionSecondary} onPress={handleShare} activeOpacity={0.75}>
                 <IconShare color={COLORS.primary} />
                 <Text style={styles.actionSecondaryText}>Partager</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.actionSecondary}
-                onPress={closeResult}
-                activeOpacity={0.75}
-              >
+              <TouchableOpacity style={styles.actionSecondary} onPress={closeResult} activeOpacity={0.75}>
                 <Text style={styles.actionSecondaryText}>🔄 Rescanner</Text>
               </TouchableOpacity>
             </View>
 
-            <TouchableOpacity
-              style={styles.closeSheetButton}
-              onPress={closeResult}
-              activeOpacity={0.75}
-            >
+            <TouchableOpacity style={styles.closeSheetButton} onPress={closeResult} activeOpacity={0.75}>
               <Text style={styles.closeSheetText}>Fermer</Text>
             </TouchableOpacity>
           </View>
@@ -398,9 +501,11 @@ const QRScannerTab = ({ navigation }) => {
 };
 
 // ============================================================
-// ÉCRAN PRINCIPAL
+// ÉCRAN PRINCIPAL — 2 onglets
 // ============================================================
 export default function QRScreen({ navigation }) {
+  const [activeTab, setActiveTab] = useState('myqr'); // 'myqr' | 'scan'
+
   return (
     <MainLayout activeScreen="QRPay">
       <View style={styles.container}>
@@ -420,14 +525,44 @@ export default function QRScreen({ navigation }) {
             <IconBack />
           </TouchableOpacity>
           <View style={styles.headerCenter}>
-            <Text style={styles.headerTitle}>Scanner</Text>
-            <Text style={styles.headerSubtitle}>Scannez un QR Code NT Albey</Text>
+            <Text style={styles.headerTitle}>{activeTab === 'myqr' ? 'Mon QR Code' : 'Scanner'}</Text>
+            <Text style={styles.headerSubtitle}>
+              {activeTab === 'myqr' ? 'Partagez votre QR pour recevoir' : 'Scannez un QR Code NT Albey'}
+            </Text>
           </View>
           <View style={{ width: 44 }} />
         </LinearGradient>
 
+        <View style={styles.tabsContainer}>
+          <TouchableOpacity
+            style={[styles.tabButton, activeTab === 'myqr' && styles.tabButtonActive]}
+            onPress={() => setActiveTab('myqr')}
+            activeOpacity={0.8}
+          >
+            <IconQRTab color={activeTab === 'myqr' ? '#FFFFFF' : COLORS.primary} />
+            <Text style={[styles.tabLabel, activeTab === 'myqr' && styles.tabLabelActive]}>
+              Mon QR
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.tabButton, activeTab === 'scan' && styles.tabButtonActive]}
+            onPress={() => setActiveTab('scan')}
+            activeOpacity={0.8}
+          >
+            <IconScanTab color={activeTab === 'scan' ? '#FFFFFF' : COLORS.primary} />
+            <Text style={[styles.tabLabel, activeTab === 'scan' && styles.tabLabelActive]}>
+              Scanner
+            </Text>
+          </TouchableOpacity>
+        </View>
+
         <View style={{ flex: 1 }}>
-          <QRScannerTab navigation={navigation} />
+          {activeTab === 'myqr' ? (
+            <MyQRTab />
+          ) : (
+            <QRScannerTab navigation={navigation} />
+          )}
         </View>
       </View>
     </MainLayout>
@@ -440,7 +575,6 @@ export default function QRScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
 
-  // Header
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -464,6 +598,59 @@ const styles = StyleSheet.create({
   headerCenter: { alignItems: 'center', flex: 1 },
   headerTitle: { fontSize: 20, fontWeight: '800', color: '#FFFFFF', letterSpacing: -0.3 },
   headerSubtitle: { fontSize: 11, color: 'rgba(255,255,255,0.8)', marginTop: 2, letterSpacing: 0.5, fontWeight: '500' },
+
+  tabsContainer: {
+    flexDirection: 'row',
+    marginHorizontal: 16,
+    marginTop: -18,
+    backgroundColor: COLORS.surface,
+    borderRadius: 16,
+    padding: 5,
+    borderWidth: 1,
+    borderColor: COLORS.borderSoft,
+    zIndex: 5,
+    ...Platform.select({
+      ios: { shadowColor: COLORS.shadow, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 12 },
+      android: { elevation: 4 },
+    }),
+  },
+  tabButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
+  tabButtonActive: { backgroundColor: COLORS.primary },
+  tabLabel: { fontSize: 14, fontWeight: '800', color: COLORS.primary, letterSpacing: 0.2 },
+  tabLabelActive: { color: '#FFFFFF' },
+
+  // Mon QR — QR SEUL
+  myQrContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  myQrCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 28,
+    padding: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.borderSoft,
+    ...Platform.select({
+      ios: { shadowColor: COLORS.shadow, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.1, shadowRadius: 20 },
+      android: { elevation: 6 },
+    }),
+  },
+  qrLoading: {
+    width: 240, height: 240,
+    alignItems: 'center', justifyContent: 'center',
+  },
 
   // Permission / loading
   centerContainer: {

@@ -6,6 +6,7 @@ import { API } from '../services/api.js';
 import { state } from '../services/state.js';
 import { Toast } from '../components/toast.js';
 import { Modal } from '../components/modal.js';
+import { escapeHtml } from '../utils/sanitize.js';
 import {
     initSocket,
     joinTickets,
@@ -345,26 +346,26 @@ export async function render() {
                         <div class="ticket-header">
                             <div class="ticket-title-group">
                                 <span class="ticket-id">#${ticket.id}</span>
-                                <h4 class="ticket-subject">${ticket.subject || 'Sans objet'}</h4>
+                                <h4 class="ticket-subject">${escapeHtml(ticket.subject || 'Sans objet')}</h4>
                                 ${actionRequired ? `<span class="ticket-action-badge"><i class="fas fa-bolt"></i> Action requise</span>` : ''}
                                 ${relanceCount > 0 ? `<span class="ticket-relance-badge"><i class="fas fa-redo"></i> Relancé ${relanceCount}×</span>` : ''}
                                 ${waitValidation ? `<span class="ticket-wait-badge"><i class="fas fa-hourglass-half"></i> En attente validation</span>` : ''}
                             </div>
                             <div class="ticket-badges">
-                                <span class="ticket-badge priority-${ticket.priority}">${priorityLabel}</span>
-                                <span class="ticket-badge status-${ticket.status}">${statusLabel}</span>
+                                <span class="ticket-badge priority-${escapeHtml(ticket.priority)}">${escapeHtml(priorityLabel)}</span>
+                                <span class="ticket-badge status-${escapeHtml(ticket.status)}">${escapeHtml(statusLabel)}</span>
                             </div>
                         </div>
-                        <div class="ticket-description">${(ticket.description || '').substring(0, 140)}${(ticket.description || '').length > 140 ? '...' : ''}</div>
+                        <div class="ticket-description">${escapeHtml((ticket.description || '').substring(0, 140))}${(ticket.description || '').length > 140 ? '...' : ''}</div>
                         <div class="ticket-footer">
-                            <span class="ticket-meta"><i class="fas fa-user"></i> ${ticket.client || 'Client'}</span>
+                            <span class="ticket-meta"><i class="fas fa-user"></i> ${escapeHtml(ticket.client || 'Client')}</span>
                             <span class="ticket-meta ticket-meta-phone"><i class="fas fa-phone"></i>
                                 ${phone !== '-'
-                                    ? `<a href="tel:${phone}" class="ticket-phone-link">${phone}</a>`
+                                    ? `<a href="tel:${escapeHtml(phone)}" class="ticket-phone-link">${escapeHtml(phone)}</a>`
                                     : 'Non renseigné'}
                             </span>
-                            <span class="ticket-meta"><i class="fas fa-user-tie"></i> ${assignedAgent ? assignedAgent.name : 'Non assigné'}</span>
-                            ${creator ? `<span class="ticket-meta"><i class="fas fa-user-edit"></i> Créé par ${creator.name}</span>` : ''}
+                            <span class="ticket-meta"><i class="fas fa-user-tie"></i> ${assignedAgent ? escapeHtml(assignedAgent.name) : 'Non assigné'}</span>
+                            ${creator ? `<span class="ticket-meta"><i class="fas fa-user-edit"></i> Créé par ${escapeHtml(creator.name)}</span>` : ''}
                             <span class="ticket-meta"><i class="fas fa-calendar"></i> ${date}</span>
                             <span class="ticket-actions">
                                 <button class="ticket-btn view-ticket" data-id="${ticket.id}" title="Voir / Traiter">
@@ -534,12 +535,12 @@ async function showViewTicketModal(id) {
                     <div class="ticket-thread-avatar">${(c.authorName || '?').split(' ').map(n=>n[0]).join('').toUpperCase().substring(0,2)}</div>
                     <div class="ticket-thread-content">
                         <div class="ticket-thread-meta">
-                            <strong>${c.authorName || 'Utilisateur'}</strong>
-                            <span class="thread-role">${roleLabel}</span>
-                            <span class="thread-type-label">${typeLabel}</span>
-                            <span class="thread-date">${dateStr}</span>
+                            <strong>${escapeHtml(c.authorName || 'Utilisateur')}</strong>
+                            <span class="thread-role">${escapeHtml(roleLabel)}</span>
+                            <span class="thread-type-label">${escapeHtml(typeLabel)}</span>
+                            <span class="thread-date">${escapeHtml(dateStr)}</span>
                         </div>
-                        <div class="ticket-thread-text">${(c.text || '').replace(/</g,'&lt;').replace(/\n/g,'<br>')}</div>
+                        <div class="ticket-thread-text">${escapeHtml(c.text || '').replace(/\n/g,'<br>')}</div>
                     </div>
                 </div>
             `;
@@ -574,18 +575,18 @@ async function showViewTicketModal(id) {
                 </div>
                 <div class="modal-title-group">
                     <h2>Ticket #${ticket.id}</h2>
-                    <p>${ticket.subject || 'Sans objet'}</p>
+                    <p>${escapeHtml(ticket.subject || 'Sans objet')}</p>
                 </div>
                 <button class="modal-close" id="closeModalBtn"><i class="fas fa-times"></i></button>
             </div>
 
             <div class="modal-body">
                 <div class="ticket-view-badges">
-                    <span class="ticket-badge priority-${ticket.priority}">
-                        <i class="fas fa-flag"></i> ${PRIORITY_LABELS[ticket.priority] || ticket.priority}
+                    <span class="ticket-badge priority-${escapeHtml(ticket.priority)}">
+                        <i class="fas fa-flag"></i> ${escapeHtml(PRIORITY_LABELS[ticket.priority] || ticket.priority)}
                     </span>
-                    <span class="ticket-badge status-${ticket.status}">
-                        <i class="fas fa-circle"></i> ${STATUS_LABELS[ticket.status] || ticket.status}
+                    <span class="ticket-badge status-${escapeHtml(ticket.status)}">
+                        <i class="fas fa-circle"></i> ${escapeHtml(STATUS_LABELS[ticket.status] || ticket.status)}
                     </span>
                     ${waitingValidation ? `<span class="ticket-wait-badge"><i class="fas fa-hourglass-half"></i> En attente validation</span>` : ''}
                     ${relanceCount > 0 ? `<span class="ticket-relance-badge"><i class="fas fa-redo"></i> Relancé ${relanceCount}×</span>` : ''}
@@ -594,35 +595,35 @@ async function showViewTicketModal(id) {
                 <div class="ticket-view-grid">
                     <div class="ticket-view-item">
                         <label><i class="fas fa-user"></i> Client</label>
-                        <p>${ticket.client || 'Non renseigné'}</p>
+                        <p>${escapeHtml(ticket.client || 'Non renseigné')}</p>
                     </div>
                     <div class="ticket-view-item">
                         <label><i class="fas fa-phone"></i> Téléphone</label>
                         <p>${phone
-                            ? `<a href="tel:${phone}" class="ticket-phone-link"><i class="fas fa-phone-alt"></i> ${phone}</a>`
+                            ? `<a href="tel:${escapeHtml(phone)}" class="ticket-phone-link"><i class="fas fa-phone-alt"></i> ${escapeHtml(phone)}</a>`
                             : 'Non renseigné'}</p>
                     </div>
                     <div class="ticket-view-item">
                         <label><i class="fas fa-user-tie"></i> Assigné à</label>
-                        <p>${assignedAgent ? assignedAgent.name : 'Non assigné'}</p>
+                        <p>${assignedAgent ? escapeHtml(assignedAgent.name) : 'Non assigné'}</p>
                     </div>
                     <div class="ticket-view-item">
                         <label><i class="fas fa-user-edit"></i> Créé par</label>
-                        <p>${creator ? creator.name : 'Inconnu'}</p>
+                        <p>${creator ? escapeHtml(creator.name) : 'Inconnu'}</p>
                     </div>
                     <div class="ticket-view-item">
                         <label><i class="fas fa-calendar"></i> Créé le</label>
-                        <p>${ticket.createdAt ? new Date(ticket.createdAt).toLocaleString('fr-FR') : '-'}</p>
+                        <p>${ticket.createdAt ? escapeHtml(new Date(ticket.createdAt).toLocaleString('fr-FR')) : '-'}</p>
                     </div>
                     <div class="ticket-view-item">
                         <label><i class="fas fa-tag"></i> Catégorie</label>
-                        <p>${ticket.category || 'Général'}</p>
+                        <p>${escapeHtml(ticket.category || 'Général')}</p>
                     </div>
                 </div>
 
                 <div class="ticket-view-description">
                     <label><i class="fas fa-align-left"></i> Description</label>
-                    <p>${(ticket.description || 'Aucune description').replace(/</g,'&lt;')}</p>
+                    <p>${escapeHtml(ticket.description || 'Aucune description').replace(/\n/g,'<br>')}</p>
                 </div>
 
                 <div class="ticket-thread-section">
@@ -933,18 +934,18 @@ async function showEditTicketModal(id) {
                     <div class="form-row">
                         <div class="form-group">
                             <label><i class="fas fa-tag"></i> Sujet</label>
-                            <input type="text" id="editTicketSubject" value="${ticket.subject || ''}" required>
+                            <input type="text" id="editTicketSubject" value="${escapeHtml(ticket.subject || '')}" required>
                         </div>
                     </div>
 
                     <div class="form-row form-row-2">
                         <div class="form-group">
                             <label><i class="fas fa-user"></i> Client</label>
-                            <input type="text" id="editTicketClient" value="${ticket.client || ''}" required>
+                            <input type="text" id="editTicketClient" value="${escapeHtml(ticket.client || '')}" required>
                         </div>
                         <div class="form-group">
                             <label><i class="fas fa-phone"></i> Téléphone</label>
-                            <input type="tel" id="editTicketPhone" value="${phone}"
+                            <input type="tel" id="editTicketPhone" value="${escapeHtml(phone)}"
                                    pattern="[0-9+\\s\\-()]{6,20}" required>
                         </div>
                     </div>
@@ -976,7 +977,7 @@ async function showEditTicketModal(id) {
                             <select id="editTicketAssignedTo">
                                 <option value="">— Non assigné —</option>
                                 ${assignableUsers.map(a =>
-                                    `<option value="${a.id}" ${ticket.assignedTo === a.id ? 'selected' : ''}>${a.name}</option>`
+                                    `<option value="${a.id}" ${ticket.assignedTo === a.id ? 'selected' : ''}>${escapeHtml(a.name)}</option>`
                                 ).join('')}
                             </select>
                         </div>
@@ -985,7 +986,7 @@ async function showEditTicketModal(id) {
                     <div class="form-row">
                         <div class="form-group">
                             <label><i class="fas fa-align-left"></i> Description</label>
-                            <textarea id="editTicketDescription" rows="4" required>${ticket.description || ''}</textarea>
+                            <textarea id="editTicketDescription" rows="4" required>${escapeHtml(ticket.description || '')}</textarea>
                         </div>
                     </div>
                 </div>

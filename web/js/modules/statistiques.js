@@ -1,6 +1,7 @@
 // modules/statistiques.js
 import { API } from '../services/api.js';
 import { Toast } from '../components/toast.js';
+import { escapeHtml } from '../utils/sanitize.js';
 
 let chartActivity = null;
 let chartStatus = null;
@@ -347,10 +348,10 @@ function renderTable() {
     } else {
         tbody.innerHTML = pageData.map(conv => `
             <tr>
-                <td><strong>${conv.client}</strong></td>
-                <td>${conv.subject || 'Sans objet'}</td>
-                <td><span class="status-badge ${conv.status}">${conv.status === 'open' ? 'Ouvert' : conv.status === 'pending' ? 'En attente' : 'Fermé'}</span></td>
-                <td>${conv.agent || 'Non assigné'}</td>
+                <td><strong>${escapeHtml(conv.client)}</strong></td>
+                <td>${escapeHtml(conv.subject || 'Sans objet')}</td>
+                <td><span class="status-badge ${escapeHtml(conv.status)}">${conv.status === 'open' ? 'Ouvert' : conv.status === 'pending' ? 'En attente' : 'Fermé'}</span></td>
+                <td>${escapeHtml(conv.agent || 'Non assigné')}</td>
                 <td>${new Date(conv.createdAt).toLocaleDateString('fr-FR')}</td>
                 <td>
                     <button class="conv-action-btn" onclick="window.loadPage('conversation-detail', ${conv.id})" title="Voir">

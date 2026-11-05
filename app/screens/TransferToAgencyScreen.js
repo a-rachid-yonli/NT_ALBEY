@@ -1,22 +1,17 @@
-// screens/TransferToAgencyScreen.js - Transfert guichet RÉEL via backend
-// ✅ v9 : hero + carte solde + box "Comment ça fonctionne" retirés (écran épuré)
-// ✅ v9 : styles + icône IconEye + state balanceVisible + addTransaction inutilisés supprimés
-// ✅ v8 : Validation détaillée du numéro (messages clairs et progressifs)
-// ✅ v7 : Modal "Transfert confirmé" harmonisé avec SendMoneyScreen & WithdrawScreen
-// ✅ v6 : FIX bouton "Confirmer" sans texte (flex bug en column)
-// ✅ v5 : VRAI mot de passe (8-20) + œil toggle + récap dans le modal
-// ✅ v4 : FIX "✓ Terminé" standalone + design harmonisé
-// ✅ v3 : NOTIFICATION automatique + cache métadonnées + sender name auto
-// ✅ v2 : intégration API /api/v1/departement + /api/v1/transactions/transfert
-import React, { useState, useEffect } from 'react';
+// screens/TransferToAgencyScreen.js - v14 : PREMIUM UI HARMONISÉE
+// ✨ v14 :
+//    ├── ✅ LEVÉE DE LA RESTRICTION 83/93 SUR LE NUMÉRO BÉNÉFICIAIRE
+//    │      → Accepte désormais TOUT numéro à 8 chiffres
+//    │      (les recharges NT restent protégées côté api.js)
+//    ├── Zone montant cliquable (focus vert, caret animé, placeholder "Combien ?")
+//    ├── CTA fixe avec texte d'aide quand désactivé
+//    ├── Harmonisation des inputs bénéficiaire/région
+//    └── Toasts premium (déjà présent)
+// ⚠️ LOGIQUE MÉTIER INCHANGÉE (API, frais, notifications, PDF)
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
   StyleSheet,
-  ScrollView,
-  Alert,
   Modal,
   useWindowDimensions,
   Switch,
@@ -25,7 +20,14 @@ import {
   ActivityIndicator,
   Platform,
   FlatList,
+  Animated,
+  Easing,
+  Keyboard,
+  PanResponder,
+  Vibration,
 } from 'react-native';
+import { TranslatedText as Text, TranslatedTextInput as TextInput, TranslatedAlert as Alert, ThemedView as View, ThemedTouchableOpacity as TouchableOpacity, ThemedScrollView as ScrollView, ThemedKeyboardAvoidingView as KeyboardAvoidingView } from '../context/LanguageContext';
+import { humanizeError } from '../utils/errorHandler';
 import Svg, { Path, Circle, Rect } from 'react-native-svg';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
@@ -37,13 +39,15 @@ import { API } from '../services/api';
 import { getLogoBase64 } from '../utils/pdfUtils';
 import { useTransactions } from '../context/TransactionContext';
 import { saveTxMetadata } from '../utils/txRefCache';
+import { pickPhoneContact } from '../utils/contactPicker';
+import RecentNumbersBar, { saveRecentNumber } from '../components/RecentNumbersBar';
 import { verifyTransactionAuth, AUTH_METHOD, AUTH_CANCELLED } from '../utils/transactionAuth';
 import { isValidPin } from '../utils/validators';
 
 const NOTIFIED_TX_IDS_KEY = '@ntalbey_notified_tx_ids';
 
 // ═══════════════════════════════════════════════════════════════
-// 🎨 PALETTE PREMIUM
+// 🎨 PALETTE PREMIUM — HARMONISÉE
 // ═══════════════════════════════════════════════════════════════
 const COLORS = {
   primary:      '#008933',
@@ -51,29 +55,30 @@ const COLORS = {
   primaryDark:  '#006B28',
   accent:       '#FF6600',
   accentSoft:   '#FFF3E0',
-  textPrimary:  '#0F172A',
-  textSecondary:'#64748B',
-  textMuted:    '#94A3B8',
-  border:       '#E2E8F0',
-  borderSoft:   '#F1F5F9',
+  textPrimary:  '#0B1220',
+  textSecondary:'#5A6474',
+  textMuted:    '#A0A8B4',
+  border:       '#E7EAF0',
+  borderSoft:   '#F3F5F9',
   surface:      '#FFFFFF',
-  surfaceAlt:   '#F8FAFC',
-  background:   '#F1F5F9',
+  surfaceAlt:   '#FAFBFD',
+  background:   '#FFFFFF',
   danger:       '#EF4444',
   dangerSoft:   '#FEE2E2',
   success:      '#10B981',
   successSoft:  '#D1FAE5',
   warning:      '#F59E0B',
   warningSoft:  '#FEF3C7',
-  shadow:       '#0F172A',
+  shadow:       '#0B1220',
+  gold:         '#F59E0B',
 };
 
 // ═══════════════════════════════════════════════════════════════
 // 🎯 ICÔNES SVG
 // ═══════════════════════════════════════════════════════════════
 const IconBack = () => (
-  <Svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-    <Path d="M15 18l-6-6 6-6" stroke={COLORS.textPrimary} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+  <Svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+    <Path d="M15 18l-6-6 6-6" stroke={COLORS.textPrimary} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
   </Svg>
 );
 
@@ -90,12 +95,6 @@ const IconTransferAgencyBig = () => (
   </Svg>
 );
 
-const IconChevronDown = ({ color = COLORS.textMuted }) => (
-  <Svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-    <Path d="M6 9l6 6 6-6" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-  </Svg>
-);
-
 const IconSearch = ({ color = COLORS.textMuted }) => (
   <Svg width="18" height="18" viewBox="0 0 24 24" fill="none">
     <Circle cx="11" cy="11" r="7" stroke={color} strokeWidth="2" />
@@ -104,41 +103,41 @@ const IconSearch = ({ color = COLORS.textMuted }) => (
 );
 
 const IconCopy = ({ color = COLORS.primary }) => (
-  <Svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+  <Svg width="16" height="16" viewBox="0 0 24 24" fill="none">
     <Rect x="9" y="9" width="13" height="13" rx="2" stroke={color} strokeWidth="1.6" />
     <Path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" stroke={color} strokeWidth="1.6" strokeLinecap="round" />
   </Svg>
 );
 
 const IconPDF = () => (
-  <Svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+  <Svg width="16" height="16" viewBox="0 0 24 24" fill="none">
     <Path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z" stroke={COLORS.danger} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
     <Path d="M14 2v6h6" stroke={COLORS.danger} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
     <Path d="M8 14h8M8 18h6" stroke={COLORS.danger} strokeWidth="1.8" strokeLinecap="round" />
   </Svg>
 );
 
-const IconArrowRight = () => (
-  <Svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-    <Path d="M5 12h14M12 5l7 7-7 7" stroke="#FFFFFF" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+const IconArrowRight = ({ color = COLORS.primary, size = 16 }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Path d="M5 12h14M12 5l7 7-7 7" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
   </Svg>
 );
 
 const IconLocation = ({ color = COLORS.primary }) => (
-  <Svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+  <Svg width="20" height="20" viewBox="0 0 24 24" fill="none">
     <Path d="M12 22s8-7.5 8-13a8 8 0 10-16 0c0 5.5 8 13 8 13z" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
     <Circle cx="12" cy="9" r="3" stroke={color} strokeWidth="2" />
   </Svg>
 );
 
-const IconPhoneSmall = () => (
-  <Svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-    <Path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.362 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.574 2.81.7A2 2 0 0122 16.92z" stroke={COLORS.primary} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+const IconPhoneSmall = ({ color = COLORS.primary }) => (
+  <Svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+    <Path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.362 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.574 2.81.7A2 2 0 0122 16.92z" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
   </Svg>
 );
 
 const IconUserSmall = ({ color = COLORS.primary }) => (
-  <Svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+  <Svg width="20" height="20" viewBox="0 0 24 24" fill="none">
     <Circle cx="12" cy="8" r="4" stroke={color} strokeWidth="2" />
     <Path d="M5 20v-2a7 7 0 0114 0v2" stroke={color} strokeWidth="2" strokeLinecap="round" />
   </Svg>
@@ -151,70 +150,210 @@ const IconCheckSmall = ({ color = '#FFFFFF' }) => (
 );
 
 const IconSparkle = () => (
-  <Svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+  <Svg width="14" height="14" viewBox="0 0 24 24" fill="none">
     <Path d="M12 2l1.8 5.4L19 9l-5.2 1.6L12 16l-1.8-5.4L5 9l5.2-1.6L12 2z" fill="#FFD700" />
   </Svg>
 );
 
 const IconEyeOpen = ({ color = COLORS.primary }) => (
-  <Svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+  <Svg width="20" height="20" viewBox="0 0 24 24" fill="none">
     <Path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" stroke={color} strokeWidth="1.9" />
     <Circle cx="12" cy="12" r="3" stroke={color} strokeWidth="1.9" />
   </Svg>
 );
 
 const IconEyeClosed = ({ color = COLORS.textMuted }) => (
-  <Svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+  <Svg width="20" height="20" viewBox="0 0 24 24" fill="none">
     <Path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" stroke={color} strokeWidth="1.9" />
     <Path d="M3 3l18 18" stroke={color} strokeWidth="1.9" strokeLinecap="round" />
     <Circle cx="12" cy="12" r="3" stroke={color} strokeWidth="1.9" />
   </Svg>
 );
 
+const IconFingerprint = ({ color = '#FFFFFF', size = 20 }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Path
+      d="M12 11v3a4 4 0 01-4 4M12 8a4 4 0 014 4v3a6 6 0 01-1 3.3M8 12a4 4 0 014-4 4 4 0 014 4v2M6.5 15.5A6 6 0 0112 6a6 6 0 015.5 3.5M4 13a8 8 0 0116 0v3"
+      stroke={color}
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </Svg>
+);
+
+const IconWarning = ({ color = '#FFFFFF', size = 20 }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Path d="M12 9v4M12 17h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+  </Svg>
+);
+
+const IconClose = ({ color = COLORS.textSecondary, size = 20 }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Path d="M18 6L6 18M6 6l12 12" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+  </Svg>
+);
+
+const IconRefresh = ({ color = COLORS.primary }) => (
+  <Svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+    <Path d="M21 12a9 9 0 11-3-6.7M21 3v6h-6" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+  </Svg>
+);
+
+const hapticTap = (intensity = 'light') => {
+  if (Platform.OS === 'web') return;
+  try {
+    if (intensity === 'heavy') Vibration.vibrate(20);
+    else if (intensity === 'medium') Vibration.vibrate(12);
+    else Vibration.vibrate(6);
+  } catch (_) {}
+};
+
 // ═══════════════════════════════════════════════════════════════
 // 🏦 ÉCRAN TRANSFERT AU GUICHET
 // ═══════════════════════════════════════════════════════════════
 export default function TransferToAgencyScreen({ navigation }) {
+  const insets = useSafeAreaInsets();
   const { width = 400, height = 800 } = useWindowDimensions();
+
+  // ─── Montant ───────────────────────────────────────────
+  const [amount, setAmount] = useState('');
+  const [amountFocused, setAmountFocused] = useState(false);
+  const amountInputRef = useRef(null);
+
+  // ─── Bénéficiaire ──────────────────────────────────────
   const [phoneNumber, setPhoneNumber] = useState('');
   const [beneficiaryName, setBeneficiaryName] = useState('');
+
+  // ─── Région ────────────────────────────────────────────
   const [selectedDepartement, setSelectedDepartement] = useState(null);
-  const [amount, setAmount] = useState('');
-  const [generatedCode, setGeneratedCode] = useState('');
-  const [modalVisible, setModalVisible] = useState(false);
-  const [pin, setPin] = useState('');
-  const [pinVisible, setPinVisible] = useState(false);
-  const [regionModalVisible, setRegionModalVisible] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [isExporting, setIsExporting] = useState(false);
-  const [feesIncluded, setFeesIncluded] = useState(true);
-  const [receiptModalVisible, setReceiptModalVisible] = useState(false);
-  const [transactionDetails, setTransactionDetails] = useState(null);
-
-  const [isSending, setIsSending] = useState(false);
-  const [isVerifyingAuth, setIsVerifyingAuth] = useState(false);
-
   const [departements, setDepartements] = useState([]);
   const [isLoadingDepartements, setIsLoadingDepartements] = useState(true);
+  const [departementsError, setDepartementsError] = useState(null);
+  const [regionModalVisible, setRegionModalVisible] = useState(false);
+  const [regionSearch, setRegionSearch] = useState('');
 
-  const { balance, refreshWallet } = useTransactions();
+  // ─── Frais ─────────────────────────────────────────────
+  const [feesIncluded, setFeesIncluded] = useState(true);
 
+  // ─── Modal de confirmation ─────────────────────────────
+  const [modalVisible, setModalVisible] = useState(false);
+  const [generatedCode, setGeneratedCode] = useState('');
+  const [pin, setPin] = useState('');
+  const [pinVisible, setPinVisible] = useState(false);
+  const [pinRequired, setPinRequired] = useState(false);
+  const pinInputRef = useRef(null);
+
+  // ─── Auth / Envoi ──────────────────────────────────────
+  const [isSending, setIsSending] = useState(false);
+  const [isVerifyingAuth, setIsVerifyingAuth] = useState(false);
   const [isBiometricAvailable, setIsBiometricAvailable] = useState(false);
   const [useBiometric, setUseBiometric] = useState(false);
 
+  // ─── Reçu ──────────────────────────────────────────────
+  const [receiptModalVisible, setReceiptModalVisible] = useState(false);
+  const [transactionDetails, setTransactionDetails] = useState(null);
+  const [isExporting, setIsExporting] = useState(false);
+
+  // ─── User ──────────────────────────────────────────────
   const [currentUserPhone, setCurrentUserPhone] = useState(null);
   const [senderFirstName, setSenderFirstName]   = useState('');
   const [senderLastName, setSenderLastName]     = useState('');
 
-  // Chargement du user connecté (prénom + nom)
+  // ─── Toast ─────────────────────────────────────────────
+  const [toast, setToast] = useState(null);
+  const toastAnim = useRef(new Animated.Value(-150)).current;
+
+  // ─── PanResponder sheet confirmation ───────────────────
+  const sheetTranslateY = useRef(new Animated.Value(0)).current;
+
+  // ─── Animations montant ────────────────────────────────
+  const amountOpacity = useRef(new Animated.Value(1)).current;
+  const caretOpacity = useRef(new Animated.Value(1)).current;
+
+  const { balance, refreshWallet } = useTransactions();
+
+  // ═════════════════════════════════════════════════════════
+  // 🎯 TOAST PREMIUM
+  // ═════════════════════════════════════════════════════════
+  const showToast = (type, title, message) => {
+    setToast({ type, title, message: type === 'error' ? humanizeError(message) : message });
+    Animated.spring(toastAnim, {
+      toValue: 1,
+      tension: 65,
+      friction: 9,
+      useNativeDriver: true,
+    }).start();
+
+    setTimeout(() => {
+      Animated.timing(toastAnim, {
+        toValue: -150,
+        duration: 250,
+        useNativeDriver: true,
+      }).start(() => setToast(null));
+    }, 4000);
+  };
+
+  // ─── Montant numérique ─────────────────────────────────
+  const numericAmount = useMemo(() => {
+    const n = parseInt(String(amount || '0').replace(/\D/g, ''), 10);
+    return isNaN(n) ? 0 : n;
+  }, [amount]);
+
+  const displayAmount = useMemo(() => {
+    return numericAmount > 0 ? numericAmount.toLocaleString('fr-FR') : '0';
+  }, [numericAmount]);
+
+  const amountError = useMemo(() => {
+    if (numericAmount === 0) return null;
+    if (numericAmount < 100) return 'Minimum 100 FCFA';
+    if (numericAmount > balance) return 'Solde insuffisant';
+    return null;
+  }, [numericAmount, balance]);
+
+  // ─── Nettoyage téléphone ───────────────────────────────
+  const cleanPhone = useMemo(() => {
+    return String(phoneNumber || '').replace(/[\s\-()\.]/g, '').replace(/^\+?227/, '');
+  }, [phoneNumber]);
+
+  // ✅ v14 : LEVÉE DE LA RESTRICTION 83/93
+  // Accepte désormais TOUT numéro à 8 chiffres (le backend valide le reste)
+  const isPhoneValid = useMemo(() => {
+    return /^\d{8}$/.test(cleanPhone);
+  }, [cleanPhone]);
+
+  // Animations
+  useEffect(() => {
+    Animated.sequence([
+      Animated.timing(amountOpacity, { toValue: 0.6, duration: 90, useNativeDriver: true }),
+      Animated.timing(amountOpacity, { toValue: 1, duration: 140, useNativeDriver: true }),
+    ]).start();
+  }, [numericAmount]);
+
+  useEffect(() => {
+    if (!amountFocused || numericAmount !== 0) {
+      caretOpacity.setValue(1);
+      return;
+    }
+    const blink = Animated.loop(
+      Animated.sequence([
+        Animated.timing(caretOpacity, { toValue: 0, duration: 500, useNativeDriver: true }),
+        Animated.timing(caretOpacity, { toValue: 1, duration: 500, useNativeDriver: true }),
+      ])
+    );
+    blink.start();
+    return () => blink.stop();
+  }, [amountFocused, numericAmount]);
+
+  // ═════════════════════════════════════════════════════════
+  // Effets
+  // ═════════════════════════════════════════════════════════
   useEffect(() => {
     (async () => {
       try {
         const u = await API.getCurrentUser();
         if (u?.phone) {
-          setCurrentUserPhone(
-            String(u.phone).replace(/\s/g, '').replace(/^\+?227/, '')
-          );
+          setCurrentUserPhone(String(u.phone).replace(/\s/g, '').replace(/^\+?227/, ''));
         }
         const fullName = String(u?.name || u?.full_name || '').trim();
         if (fullName) {
@@ -228,31 +367,35 @@ export default function TransferToAgencyScreen({ navigation }) {
     })();
   }, []);
 
-  // Chargement des départements
-  useEffect(() => {
-    const loadDepartements = async () => {
-      try {
-        if (__DEV__) console.log('📡 [TransferAgency] Chargement départements...');
-        const data = await API.getDepartements();
-        setDepartements(Array.isArray(data) ? data : []);
-        if (__DEV__) console.log(`✅ [TransferAgency] ${data?.length || 0} départements chargés`);
-      } catch (error) {
-        if (__DEV__) console.error('❌ [TransferAgency] Erreur chargement départements :', error);
-        Alert.alert('Erreur', 'Impossible de charger la liste des régions. Vérifiez votre connexion.');
-      } finally {
-        setIsLoadingDepartements(false);
+  const loadDepartements = useCallback(async () => {
+    setIsLoadingDepartements(true);
+    setDepartementsError(null);
+    try {
+      const data = await API.getDepartements();
+      const list = Array.isArray(data) ? data : [];
+      if (list.length === 0) {
+        setDepartements([]);
+        setDepartementsError('Aucune région disponible pour le moment.');
+      } else {
+        setDepartements(list);
       }
-    };
-    loadDepartements();
+    } catch (error) {
+      setDepartements([]);
+      setDepartementsError(
+        error?.message || 'Impossible de charger les régions. Vérifiez votre connexion.'
+      );
+    } finally {
+      setIsLoadingDepartements(false);
+    }
   }, []);
 
-  // Biométrie
+  useEffect(() => { loadDepartements(); }, [loadDepartements]);
+
   useEffect(() => {
     const checkBiometrics = async () => {
       try {
         const compatible = await LocalAuthentication.hasHardwareAsync();
         const deviceEnrolled = await LocalAuthentication.isEnrolledAsync();
-
         let accountEnrolled = false;
         try {
           const user = await API.getCurrentUser();
@@ -260,13 +403,10 @@ export default function TransferToAgencyScreen({ navigation }) {
             accountEnrolled = await API.isPhoneEnrolledForBiometric(user.phone);
           }
         } catch (_) {}
-
         const available = compatible && deviceEnrolled && accountEnrolled;
         setIsBiometricAvailable(available);
         setUseBiometric(available);
-        if (__DEV__) console.log('🔐 [TransferAgency] Biométrie disponible :', available);
       } catch (error) {
-        if (__DEV__) console.log('Erreur biométrie:', error);
         setIsBiometricAvailable(false);
         setUseBiometric(false);
       }
@@ -274,7 +414,55 @@ export default function TransferToAgencyScreen({ navigation }) {
     checkBiometrics();
   }, []);
 
-  // AUTHENTIFICATION BIOMÉTRIQUE (vraie, via backend)
+  // Auto-focus montant
+  const autoFocusDone = useRef(false);
+  useEffect(() => {
+    if (autoFocusDone.current) return;
+    if (isLoadingDepartements) return;
+    if (amount) { autoFocusDone.current = true; return; }
+    const t = setTimeout(() => {
+      amountInputRef.current?.focus();
+      autoFocusDone.current = true;
+    }, 500);
+    return () => clearTimeout(t);
+  }, [isLoadingDepartements, amount]);
+
+  // ═════════════════════════════════════════════════════════
+  // PanResponder
+  // ═════════════════════════════════════════════════════════
+  const closeConfirmModal = useCallback(() => {
+    setModalVisible(false);
+    setPin('');
+    setPinRequired(false);
+    setUseBiometric(isBiometricAvailable);
+    sheetTranslateY.setValue(0);
+  }, [isBiometricAvailable]);
+
+  const sheetPanResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, g) => g.dy > 8 && Math.abs(g.dy) > Math.abs(g.dx),
+      onPanResponderMove: (_, g) => {
+        if (g.dy > 0) sheetTranslateY.setValue(g.dy);
+      },
+      onPanResponderRelease: (_, g) => {
+        if (g.dy > 120 || g.vy > 0.8) {
+          Animated.timing(sheetTranslateY, {
+            toValue: 800,
+            duration: 200,
+            useNativeDriver: true,
+          }).start(() => {
+            closeConfirmModal();
+          });
+        } else {
+          Animated.spring(sheetTranslateY, { toValue: 0, useNativeDriver: true }).start();
+        }
+      },
+    })
+  ).current;
+
+  // ═════════════════════════════════════════════════════════
+  // Auth
+  // ═════════════════════════════════════════════════════════
   const authenticateWithBiometrics = async () => {
     if (isSending || isVerifyingAuth) return;
     setIsVerifyingAuth(true);
@@ -284,86 +472,67 @@ export default function TransferToAgencyScreen({ navigation }) {
     } catch (error) {
       if (error?.message === AUTH_CANCELLED) return;
       const msg = String(error?.message || '');
-      if (msg.includes('Session biométrique expirée') || msg.includes('Aucune empreinte')) {
+      if (
+        msg.includes('Session biométrique expirée') ||
+        msg.includes('Aucune empreinte') ||
+        msg.includes('non enregistrée')
+      ) {
         setUseBiometric(false);
+        setPinRequired(true);
+        setTimeout(() => pinInputRef.current?.focus(), 150);
+        return;
       }
-      Alert.alert('Authentification refusée', msg || 'Veuillez réessayer.');
+      showToast('error', 'Authentification refusée', msg || 'Veuillez réessayer.');
     } finally {
       setIsVerifyingAuth(false);
     }
   };
 
-  // CONFIRMATION PAR VRAI MOT DE PASSE (8-20)
   const confirmWithPin = async () => {
     if (isSending || isVerifyingAuth) return;
-
     if (!isValidPin(pin)) {
-      Alert.alert(
-        'Mot de passe invalide',
-        'Le mot de passe doit contenir entre 8 et 20 caractères.'
-      );
+      showToast('error', 'Mot de passe invalide', 'Le mot de passe doit contenir entre 8 et 20 caractères.');
       return;
     }
-
+    hapticTap('medium');
     setIsVerifyingAuth(true);
     try {
       await verifyTransactionAuth(AUTH_METHOD.PIN, pin);
       setPin('');
+      setPinRequired(false);
       await executeTransfer();
     } catch (error) {
-      Alert.alert(
-        'Mot de passe incorrect',
-        error?.message || 'Le mot de passe saisi est incorrect.'
-      );
+      showToast('error', 'Mot de passe incorrect', error?.message || 'Le mot de passe saisi est incorrect.');
       setPin('');
     } finally {
       setIsVerifyingAuth(false);
     }
   };
 
-  // Exécution du transfert guichet
+  // ═════════════════════════════════════════════════════════
+  // Exécution du transfert
+  // ═════════════════════════════════════════════════════════
   const executeTransfer = async () => {
-    if (!transactionDetails) {
-      if (__DEV__) console.warn('⚠️ [TransferAgency] executeTransfer sans transactionDetails');
-      return;
-    }
+    if (!transactionDetails) return;
 
     const departementId = transactionDetails.departementId;
     const receiverPhone = String(transactionDetails.phoneNumber || '')
       .replace(/\s/g, '').replace(/^\+?227/, '');
 
     if (!departementId) {
-      Alert.alert('Erreur', 'Veuillez sélectionner une région de retrait.');
+      showToast('error', 'Erreur', 'Veuillez sélectionner une région de retrait.');
       return;
     }
     if (!receiverPhone) {
-      Alert.alert('Erreur', 'Numéro du bénéficiaire manquant.');
+      showToast('error', 'Erreur', 'Numéro du bénéficiaire manquant.');
       return;
     }
     if (!senderFirstName.trim() || !senderLastName.trim()) {
-      Alert.alert(
-        'Erreur',
-        'Vos informations (nom et prénom) sont incomplètes. Complétez votre profil avant de continuer.'
-      );
+      showToast('error', 'Erreur', 'Vos informations (nom et prénom) sont incomplètes.');
       return;
     }
 
-    if (__DEV__) {
-      console.log('');
-      console.log('═══════════════════════════════════════════════');
-      console.log('🏦 [TransferAgency] executeTransfer → APPEL BACKEND');
-      console.log('   Département ID :', departementId);
-      console.log('   Département    :', transactionDetails.region);
-      console.log('   Bénéficiaire   :', transactionDetails.beneficiaryName);
-      console.log('   N° bénéf.      :', receiverPhone);
-      console.log('   Montant        :', transactionDetails.amount, 'FCFA');
-      console.log('   Frais inclus   :', feesIncluded);
-      console.log('   Sender first   :', senderFirstName);
-      console.log('   Sender last    :', senderLastName);
-      console.log('═══════════════════════════════════════════════');
-    }
-
-    setModalVisible(false);
+    closeConfirmModal();
     setIsSending(true);
 
     try {
@@ -375,8 +544,6 @@ export default function TransferToAgencyScreen({ navigation }) {
         sender_first_name: senderFirstName.trim(),
         sender_last_name:  senderLastName.trim(),
       });
-
-      if (__DEV__) console.log('✅ [TransferAgency] Réponse backend :', JSON.stringify(result, null, 2));
 
       const grossAmount = parseFloat(result.gross_amount) || Number(transactionDetails.amount);
       const feeAmount   = parseFloat(result.fee_amount)   || transactionDetails.fees || 0;
@@ -393,7 +560,6 @@ export default function TransferToAgencyScreen({ navigation }) {
         debitedAmount:  parseFloat(result.gross_amount) + parseFloat(result.fee_amount) || prev.debitedAmount,
       }));
 
-      // CACHE DES MÉTADONNÉES
       if (result.id) {
         try {
           await saveTxMetadata(result.id, {
@@ -403,13 +569,9 @@ export default function TransferToAgencyScreen({ navigation }) {
             receiver_phone: receiverPhone,
             receiver_name:  transactionDetails.beneficiaryName || `+227 ${receiverPhone}`,
           });
-          if (__DEV__) console.log('💾 [TransferAgency] Metadata cachée pour tx', result.id);
-        } catch (cacheErr) {
-          if (__DEV__) console.warn('⚠️ [TransferAgency] Erreur cache metadata :', cacheErr?.message);
-        }
+        } catch (_) {}
       }
 
-      // NOTIFICATION UTILISATEUR
       try {
         const amountStr = Number(transactionDetails.amount).toLocaleString('fr-FR');
         const receiverLabel = transactionDetails.beneficiaryName || `+227 ${receiverPhone}`;
@@ -422,7 +584,6 @@ export default function TransferToAgencyScreen({ navigation }) {
           transactionId: result.id,
           reference: result.reference,
         });
-        if (__DEV__) console.log('🔔 [TransferAgency] Notification créée');
 
         const raw = await AsyncStorage.getItem(NOTIFIED_TX_IDS_KEY);
         let ids = raw ? JSON.parse(raw) : [];
@@ -433,29 +594,22 @@ export default function TransferToAgencyScreen({ navigation }) {
           ids = ids.slice(-100);
           await AsyncStorage.setItem(NOTIFIED_TX_IDS_KEY, JSON.stringify(ids));
         }
-      } catch (notifErr) {
-        if (__DEV__) console.warn('⚠️ [TransferAgency] Erreur création notification :', notifErr?.message);
-      }
+      } catch (_) {}
 
       setPin('');
       setReceiptModalVisible(true);
 
       if (typeof refreshWallet === 'function') {
-        if (__DEV__) console.log('🔄 [TransferAgency] Refresh wallet...');
         await refreshWallet();
       }
     } catch (error) {
-      if (__DEV__) console.error('❌ [TransferAgency] Échec du transfert :', error.message);
-      Alert.alert(
-        'Échec du transfert',
-        error.message || 'Impossible d\'effectuer le transfert. Vérifiez votre connexion.'
-      );
+      showToast('error', 'Échec du transfert', error.message || 'Impossible d\'effectuer le transfert.');
     } finally {
       setIsSending(false);
-      if (__DEV__) console.log('🏁 [TransferAgency] executeTransfer terminé');
     }
   };
 
+  // ─── Frais ─────────────────────────────────────────────
   const calculateFees = (amountValue) => {
     if (!amountValue || amountValue <= 0) return 0;
     if (amountValue <= 15000) return 100;
@@ -478,6 +632,23 @@ export default function TransferToAgencyScreen({ navigation }) {
     return { fees, debitedAmount, receivedAmount };
   };
 
+  const feesDisplay = useMemo(() => {
+    return calculateTransactionDetails(numericAmount, feesIncluded);
+  }, [numericAmount, feesIncluded]);
+
+  const getFeesLabel = () => {
+    const v = numericAmount;
+    return v <= 15000 ? 'Frais (fixe 100 F)' : 'Frais (1,5%)';
+  };
+
+  const safeFormatCurrency = (num) => {
+    if (num === undefined || num === null || isNaN(num)) return '0 FCFA';
+    return num.toLocaleString() + ' FCFA';
+  };
+
+  const getConfirmationTotal = () => safeFormatCurrency(feesDisplay.debitedAmount);
+  const getConfirmationReceived = () => safeFormatCurrency(feesDisplay.receivedAmount);
+
   const generateWithdrawCode = () => {
     const prefix = 'NT';
     const random = String(Math.floor(100000 + Math.random() * 900000));
@@ -488,118 +659,63 @@ export default function TransferToAgencyScreen({ navigation }) {
     return `${prefix}${random}${day}${month}${year}`;
   };
 
-  const safeFormatCurrency = (num) => {
-    if (num === undefined || num === null || isNaN(num)) return '0 FCFA';
-    return num.toLocaleString() + ' FCFA';
-  };
-
   // ═══════════════════════════════════════════════════════════
-  // ✅ handleSend avec validation détaillée du numéro
+  // handleSend
   // ═══════════════════════════════════════════════════════════
   const handleSend = () => {
-    if (__DEV__) {
-      console.log('');
-      console.log('📤 [TransferAgency] handleSend → début');
-      console.log('   Bénéficiaire :', beneficiaryName);
-      console.log('   Téléphone    :', phoneNumber);
-      console.log('   Département  :', selectedDepartement?.designation);
-      console.log('   Montant      :', amount);
-    }
-
-    // 1️⃣ VALIDATION DU NUMÉRO
-    const cleanPhone = String(phoneNumber || '')
-      .replace(/[\s\-()\.]/g, '')
-      .replace(/^\+?227/, '');
-
     if (!cleanPhone) {
-      Alert.alert(
-        'Numéro manquant',
-        'Veuillez saisir le numéro de téléphone du bénéficiaire.'
-      );
+      showToast('error', 'Numéro manquant', 'Veuillez saisir le numéro du bénéficiaire.');
       return;
     }
-
     if (!/^\d+$/.test(cleanPhone)) {
-      Alert.alert(
-        'Numéro invalide',
-        'Le numéro ne doit contenir que des chiffres.'
-      );
+      showToast('error', 'Numéro invalide', 'Le numéro ne doit contenir que des chiffres.');
       return;
     }
-
     if (cleanPhone.length !== 8) {
-      Alert.alert(
-        'Numéro invalide',
-        'Le numéro doit contenir exactement 8 chiffres.\n\nExemple : 93 45 22 71'
-      );
+      showToast('error', 'Numéro invalide', 'Le numéro doit contenir exactement 8 chiffres.');
       return;
     }
-
-    if (!/^(83|93)\d{6}$/.test(cleanPhone)) {
-      Alert.alert(
-        'Numéro invalide',
-        'Le numéro doit commencer par 83 ou 93.\n\nExemples valides :\n• 83 35 62 00\n• 93 45 22 71'
-      );
-      return;
-    }
-
-    // 2️⃣ VALIDATION DU NOM BÉNÉFICIAIRE
+    // ✅ v14 : Le bloc "if (!isPhoneValid)" a été SUPPRIMÉ
+    // (la validation 83/93 n'existe plus — isPhoneValid accepte tout numéro à 8 chiffres)
     if (!beneficiaryName.trim()) {
-      Alert.alert(
-        'Nom manquant',
-        'Veuillez saisir le nom complet du bénéficiaire.'
-      );
+      showToast('error', 'Nom manquant', 'Veuillez saisir le nom complet du bénéficiaire.');
       return;
     }
-
-    // 3️⃣ VALIDATION DE LA RÉGION
     if (!selectedDepartement) {
-      Alert.alert(
-        'Région manquante',
-        'Veuillez sélectionner une région de retrait.'
-      );
+      showToast('error', 'Région manquante', 'Veuillez sélectionner une région de retrait.');
       return;
     }
-
-    // 4️⃣ VALIDATION DU MONTANT
-    if (!amount || parseInt(amount) <= 0) {
-      Alert.alert(
-        'Montant manquant',
-        'Veuillez saisir un montant valide.'
-      );
+    if (numericAmount < 100) {
+      showToast('error', 'Montant insuffisant', 'Le montant minimum est de 100 FCFA.');
       return;
     }
-
-    // 5️⃣ VALIDATION DU PROFIL EXPÉDITEUR
     if (!senderFirstName.trim() || !senderLastName.trim()) {
-      Alert.alert(
-        'Profil incomplet',
-        'Votre nom et prénom sont requis pour ce transfert. Complétez votre profil puis réessayez.'
-      );
+      showToast('error', 'Profil incomplet', 'Votre nom et prénom sont requis. Complétez votre profil.');
       return;
     }
 
-    // 6️⃣ VALIDATION DU SOLDE
-    const amountValue = parseInt(amount);
-    const details = calculateTransactionDetails(amountValue, feesIncluded);
-
+    const details = calculateTransactionDetails(numericAmount, feesIncluded);
     if (details.debitedAmount > balance) {
-      Alert.alert(
+      showToast(
+        'error',
         'Solde insuffisant',
-        `Le total à débiter est de ${safeFormatCurrency(details.debitedAmount)}, ce qui dépasse votre solde de ${safeFormatCurrency(balance)}.`
+        `Total à débiter : ${safeFormatCurrency(details.debitedAmount)} • Solde : ${safeFormatCurrency(balance)}.`
       );
       return;
     }
 
-    // ✅ TOUT EST BON → préparation du modal de confirmation
+    hapticTap('medium');
+    Keyboard.dismiss();
+
     const code = generateWithdrawCode();
     setGeneratedCode(code);
+    saveRecentNumber(cleanPhone, beneficiaryName);
     setTransactionDetails({
       beneficiaryName,
       phoneNumber:    cleanPhone,
       region:         selectedDepartement.designation,
       departementId:  selectedDepartement.id,
-      amount:         amountValue,
+      amount:         numericAmount,
       fees:           details.fees,
       debitedAmount:  details.debitedAmount,
       receivedAmount: details.receivedAmount,
@@ -608,43 +724,43 @@ export default function TransferToAgencyScreen({ navigation }) {
       date:           new Date().toLocaleString('fr-FR'),
     });
 
-    if (__DEV__) console.log('✅ [TransferAgency] Ouverture du modal de confirmation');
-    setModalVisible(true);
     setUseBiometric(isBiometricAvailable);
     setPin('');
+    setPinRequired(!isBiometricAvailable);
+
+    setModalVisible(true);
   };
 
-  const finishTransfer = () => {
-    if (__DEV__) console.log('🏁 [TransferAgency] finishTransfer → fermeture');
-    Alert.alert('C\'est fait !', 'Votre transfert au guichet a été effectué avec succès.');
-    setReceiptModalVisible(false);
-    setPhoneNumber('');
-    setBeneficiaryName('');
-    setSelectedDepartement(null);
-    setAmount('');
-    setGeneratedCode('');
-    setTransactionDetails(null);
-    navigation.goBack();
+  const handleModalConfirm = async () => {
+    hapticTap('medium');
+    Keyboard.dismiss();
+
+    if (isBiometricAvailable && useBiometric && !pinRequired) {
+      setIsVerifyingAuth(true);
+      try {
+        await verifyTransactionAuth(AUTH_METHOD.BIOMETRIC);
+        await executeTransfer();
+      } catch (error) {
+        if (error?.message === AUTH_CANCELLED) return;
+        const msg = String(error?.message || '');
+        if (msg.includes('Session biométrique expirée') || msg.includes('Aucune empreinte') || msg.includes('non enregistrée')) {
+          setUseBiometric(false);
+          setPinRequired(true);
+          setTimeout(() => pinInputRef.current?.focus(), 150);
+        } else {
+          showToast('error', 'Authentification refusée', msg || 'Veuillez réessayer.');
+        }
+      } finally {
+        setIsVerifyingAuth(false);
+      }
+      return;
+    }
+
+    setPinRequired(true);
+    setTimeout(() => pinInputRef.current?.focus(), 150);
   };
 
-  const filteredDepartements = departements.filter((d) =>
-    String(d.designation || '')
-      .toLowerCase()
-      .includes(searchQuery.toLowerCase().trim())
-  );
-
-  const getFeesDisplay = () => {
-    if (!amount || parseInt(amount) <= 0) return { fees: 0, debited: 0, received: 0 };
-    const result = calculateTransactionDetails(parseInt(amount), feesIncluded);
-    return {
-      fees: result.fees || 0,
-      debited: result.debitedAmount || 0,
-      received: result.receivedAmount || 0,
-    };
-  };
-  const feesDisplay = getFeesDisplay();
-
-  // ─── HTML du PDF ────────────────────────────────────────────────
+  // PDF / Share (logique inchangée)
   const generatePDFHTML = (details, logoBase64) => {
     const logoHtml = logoBase64
       ? `<img src="${logoBase64}" alt="NT Albey Logo" class="logo" />`
@@ -704,22 +820,17 @@ export default function TransferToAgencyScreen({ navigation }) {
   };
 
   const handleExportPDF = async (details) => {
-    if (!details) return Alert.alert('Erreur', 'Aucune donnée à exporter.');
+    if (!details) { showToast('error', 'Erreur', 'Aucune donnée à exporter.'); return; }
     try {
       setIsExporting(true);
-      if (__DEV__) console.log('📄 [TransferAgency] Export PDF...');
       const logoBase64 = await getLogoBase64();
       const html = generatePDFHTML(details, logoBase64);
-
       const { base64 } = await Print.printToFileAsync({ html, base64: true });
       if (!base64) throw new Error('PDF vide');
 
       const filename = `recu_transfert_guichet_${Date.now()}.pdf`;
       const destUri = `${FileSystem.documentDirectory}${filename}`;
-
-      await FileSystem.writeAsStringAsync(destUri, base64, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
+      await FileSystem.writeAsStringAsync(destUri, base64, { encoding: FileSystem.EncodingType.Base64 });
 
       const isSharingAvailable = await Sharing.isAvailableAsync();
       if (isSharingAvailable) {
@@ -729,18 +840,17 @@ export default function TransferToAgencyScreen({ navigation }) {
           UTI: 'com.adobe.pdf',
         });
       } else {
-        Alert.alert('Reçu généré', 'Votre reçu est prêt.');
+        showToast('success', 'Reçu généré', 'Votre reçu est prêt.');
       }
     } catch (error) {
-      if (__DEV__) console.error('Erreur export PDF:', error);
-      Alert.alert('Erreur', 'Impossible de générer le PDF.\n' + error.message);
+      showToast('error', 'Erreur', 'Impossible de générer le PDF.');
     } finally {
       setIsExporting(false);
     }
   };
 
   const handleShareText = (details) => {
-    if (!details) return Alert.alert('Erreur', 'Aucune donnée à partager.');
+    if (!details) { showToast('error', 'Erreur', 'Aucune donnée à partager.'); return; }
     const message = `NT ALBEY - REÇU DE TRANSFERT AU GUICHET
 ━━━━━━━━━━━━━━━━━━━━━
 ✅ TRANSFERT CONFIRMÉ
@@ -761,286 +871,466 @@ ${details.feesIncluded ? '✅ Frais inclus' : '❌ Hors frais'}
     Share.share({ message, title: `Reçu de transfert - ${details.reference || 'NT Albey'}` });
   };
 
-  const modalWidth = width ? width - 40 : 320;
+  const finishTransfer = () => {
+    hapticTap('medium');
+    Alert.alert('C\'est fait !', 'Votre transfert au guichet a été effectué avec succès.');
+    setReceiptModalVisible(false);
+    setPhoneNumber('');
+    setBeneficiaryName('');
+    setSelectedDepartement(null);
+    setAmount('');
+    setGeneratedCode('');
+    setTransactionDetails(null);
+    setPinRequired(false);
+    navigation.goBack();
+  };
+
+  const filteredDepartements = departements.filter((d) =>
+    String(d.designation || '').toLowerCase().includes(regionSearch.toLowerCase().trim())
+  );
+
   const receiptModalWidth = width ? width - 24 : 340;
   const receiptMaxHeight = height ? Math.min(height * 0.94, height - 40) : 700;
 
-  const hasPhone = !!(phoneNumber && phoneNumber.length >= 8);
-  const hasName = !!beneficiaryName.trim();
-  const hasRegion = !!selectedDepartement;
-  const hasAmount = !!(amount && parseInt(amount) > 0);
-  const canSend = hasPhone && hasName && hasRegion && hasAmount && !isSending;
+  const canSend =
+    !!selectedDepartement &&
+    !!beneficiaryName.trim() &&
+    isPhoneValid &&
+    numericAmount >= 100 &&
+    numericAmount <= balance &&
+    !isSending &&
+    !isVerifyingAuth &&
+    !!senderFirstName.trim() &&
+    !!senderLastName.trim();
+
+  const ctaLabel = (() => {
+    if (!selectedDepartement) return 'Choisir une région';
+    if (!beneficiaryName.trim() || !isPhoneValid) return 'Saisir le bénéficiaire';
+    if (numericAmount < 100) return 'Saisir un montant (min. 100 FCFA)';
+    if (numericAmount > balance) return 'Solde insuffisant';
+    return `Envoyer ${numericAmount.toLocaleString('fr-FR')} FCFA`;
+  })();
+
+  const ctaHint = (() => {
+    if (canSend) return '';
+    if (!selectedDepartement) return 'Sélectionnez une région de retrait';
+    if (!isPhoneValid) return 'Numéro du bénéficiaire invalide (8 chiffres)';
+    if (!beneficiaryName.trim()) return 'Nom du bénéficiaire requis';
+    if (numericAmount === 0) return 'Saisissez un montant pour continuer';
+    if (numericAmount < 100) return 'Le montant minimum est de 100 FCFA';
+    if (numericAmount > balance) return 'Solde insuffisant pour ce montant';
+    return '';
+  })();
 
   return (
-    <View style={styles.container}>
-      {/* ═══════════ HEADER ═══════════ */}
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={0}
+    >
+      {/* TOAST */}
+      {toast && (
+        <Animated.View
+          style={[
+            styles.toastContainer,
+            {
+              backgroundColor: toast.type === 'error' ? COLORS.danger : COLORS.primary,
+              transform: [{
+                translateY: toastAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [-150, 0],
+                })
+              }],
+              opacity: toastAnim,
+            }
+          ]}
+        >
+          <View style={styles.toastIconWrap}>
+            <IconWarning color="#FFFFFF" size={20} />
+          </View>
+          <View style={styles.toastContent}>
+            <Text style={styles.toastTitle}>{toast.title}</Text>
+            <Text style={styles.toastMessage}>{toast.message}</Text>
+          </View>
+        </Animated.View>
+      )}
+
+      {/* HEADER */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton} activeOpacity={0.7}>
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          style={styles.backButton}
+          activeOpacity={0.7}
+        >
           <IconBack />
         </TouchableOpacity>
-        <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle}>Transfert guichet</Text>
-          <Text style={styles.headerSubtitle}>Retrait en agence NT Albey</Text>
-        </View>
-        <View style={{ width: 44 }} />
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+      {/* CONTENU */}
+      <ScrollView
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: 120 + insets.bottom }]}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        <Text style={styles.label}>Montant</Text>
 
-        {/* ═══════════ ÉTAPE 1 : BÉNÉFICIAIRE ═══════════ */}
-        <View style={styles.stepHeaderFirst}>
-          <View style={styles.stepBadge}>
-            <Text style={styles.stepBadgeText}>1</Text>
+        {/* ZONE MONTANT PREMIUM */}
+        <TouchableOpacity
+          style={[
+            styles.amountWrapper,
+            amountFocused && styles.amountWrapperFocused,
+            amountError && styles.amountWrapperError,
+          ]}
+          activeOpacity={0.9}
+          onPress={() => amountInputRef.current?.focus()}
+        >
+          {numericAmount === 0 && !amountFocused && (
+            <View style={styles.keyboardHintRow}>
+              <Text style={styles.keyboardHintIcon}>⌨️</Text>
+              <Text style={styles.keyboardHintLabel}>Touchez pour saisir</Text>
+            </View>
+          )}
+
+          {numericAmount === 0 ? (
+            <Text style={styles.amountEmptyState}>Combien ?</Text>
+          ) : (
+            <Animated.Text
+              style={[
+                styles.amountText,
+                amountError && styles.amountTextError,
+                { opacity: amountOpacity },
+              ]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+            >
+              {displayAmount}
+            </Animated.Text>
+          )}
+
+          <Text style={styles.amountCurrency}>FCFA</Text>
+
+          {amountFocused && numericAmount === 0 && (
+            <Animated.View style={[styles.customCaret, { opacity: caretOpacity }]} />
+          )}
+
+          <TextInput
+            ref={amountInputRef}
+            style={styles.amountHiddenInput}
+            value={amount}
+            onChangeText={(v) => {
+              const digits = v.replace(/[^\d]/g, '');
+              setAmount(digits);
+            }}
+            onFocus={() => setAmountFocused(true)}
+            onBlur={() => setAmountFocused(false)}
+            keyboardType="numeric"
+            maxLength={9}
+            caretHidden={true}
+            editable={!isSending}
+            showSoftInputOnFocus={true}
+            selectionColor={COLORS.primary}
+          />
+        </TouchableOpacity>
+
+        {amountError && (
+          <View style={styles.amountErrorRow}>
+            <Text style={styles.amountErrorText}>⚠️ {amountError}</Text>
           </View>
-          <Text style={styles.stepTitle}>Informations bénéficiaire</Text>
+        )}
+
+        {!amountError && (
+          <Text style={styles.balanceHint}>
+            Solde disponible · {balance.toLocaleString('fr-FR')} FCFA
+          </Text>
+        )}
+
+        <View style={styles.suggestionsRow}>
+          {['5000', '10000', '25000', '50000'].map((sug, index) => (
+            <TouchableOpacity
+              key={`sug-${sug}-${index}`}
+              style={[styles.suggestionChip, amount === sug && styles.suggestionChipActive]}
+              onPress={() => {
+                hapticTap('light');
+                setAmount(sug);
+              }}
+              disabled={isSending}
+              activeOpacity={0.75}
+            >
+              <Text style={[styles.suggestionText, amount === sug && styles.suggestionTextActive]}>
+                {parseInt(sug).toLocaleString()}
+              </Text>
+            </TouchableOpacity>
+          ))}
         </View>
 
-        <View style={styles.card}>
-          <Text style={styles.inputLabel}>Numéro de téléphone</Text>
-          <View style={styles.inputWrapper}>
-            <View style={styles.inputIconLeft}>
-              <IconPhoneSmall />
-            </View>
-            <TextInput
-              style={styles.inputField}
-              placeholder="Ex : 93 45 22 71"
-              placeholderTextColor={COLORS.textMuted}
-              keyboardType="phone-pad"
-              value={phoneNumber}
-              onChangeText={setPhoneNumber}
-              editable={!isSending}
-              maxLength={15}
-            />
-          </View>
-
-          <Text style={styles.inputLabel}>Nom complet du bénéficiaire</Text>
-          <View style={styles.inputWrapper}>
-            <View style={styles.inputIconLeft}>
-              <IconUserSmall />
-            </View>
-            <TextInput
-              style={styles.inputField}
-              placeholder="Ex : Amadou Ibrahim"
-              placeholderTextColor={COLORS.textMuted}
-              value={beneficiaryName}
-              onChangeText={setBeneficiaryName}
-              editable={!isSending}
-            />
-          </View>
-
-          <Text style={styles.inputLabel}>Région de retrait</Text>
+        {/* BÉNÉFICIAIRE */}
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 36, marginBottom: 8 }}>
+          <Text style={[styles.label, { marginBottom: 0 }]}>Bénéficiaire</Text>
           <TouchableOpacity
-            style={[styles.regionPicker, hasRegion && styles.regionPickerFilled]}
-            onPress={() => { setSearchQuery(''); setRegionModalVisible(true); }}
-            disabled={isLoadingDepartements || isSending}
+            onPress={async () => {
+              const picked = await pickPhoneContact({ showToast });
+              if (picked?.phone) setPhoneNumber(picked.phone);
+              if (picked?.name) setBeneficiaryName(picked.name);
+            }}
+            style={{ backgroundColor: COLORS.primarySoft, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10 }}
             activeOpacity={0.75}
           >
-            <View style={styles.regionPickerIconWrap}>
-              <IconLocation color={hasRegion ? '#FFFFFF' : COLORS.primary} />
-            </View>
-            <View style={styles.regionPickerContent}>
-              <Text style={[styles.regionPickerText, hasRegion && styles.regionPickerTextFilled]}>
-                {isLoadingDepartements
-                  ? 'Chargement des régions…'
-                  : (hasRegion ? selectedDepartement?.designation : 'Sélectionnez une localité')}
-              </Text>
-              {!hasRegion && !isLoadingDepartements && (
-                <Text style={styles.regionPickerHint}>Appuyez pour choisir</Text>
-              )}
-            </View>
-            {isLoadingDepartements ? (
-              <ActivityIndicator size="small" color={COLORS.primary} />
-            ) : (
-              <IconChevronDown color={hasRegion ? COLORS.primary : COLORS.textMuted} />
-            )}
+            <Text style={{ color: COLORS.primary, fontSize: 12, fontWeight: '700' }}>📒 Répertoire</Text>
           </TouchableOpacity>
         </View>
 
-        {/* ═══════════ ÉTAPE 2 : MONTANT ═══════════ */}
-        <View style={styles.stepHeader}>
-          <View style={styles.stepBadge}>
-            <Text style={styles.stepBadgeText}>2</Text>
+        <View style={styles.inputWrapper}>
+          <View style={styles.inputIconLeft}>
+            <IconPhoneSmall />
           </View>
-          <Text style={styles.stepTitle}>Quel montant ?</Text>
+          <TextInput
+            style={styles.inputField}
+            placeholder="Ex : 90 12 34 56"
+            placeholderTextColor={COLORS.textMuted}
+            keyboardType="phone-pad"
+            value={phoneNumber}
+            onChangeText={setPhoneNumber}
+            editable={!isSending}
+            maxLength={15}
+          />
+        </View>
+        <RecentNumbersBar
+          onSelectNumber={(num, name) => {
+            setPhoneNumber(num);
+            if (name && !beneficiaryName) setBeneficiaryName(name);
+          }}
+          currentValue={phoneNumber}
+        />
+
+        <View style={styles.inputWrapper}>
+          <View style={styles.inputIconLeft}>
+            <IconUserSmall />
+          </View>
+          <TextInput
+            style={styles.inputField}
+            placeholder="Nom complet du bénéficiaire"
+            placeholderTextColor={COLORS.textMuted}
+            value={beneficiaryName}
+            onChangeText={setBeneficiaryName}
+            editable={!isSending}
+          />
         </View>
 
-        <View style={styles.card}>
-          <View style={styles.amountInputContainer}>
-            <TextInput
-              style={styles.amountInput}
-              placeholder="0"
-              placeholderTextColor={COLORS.textMuted}
-              keyboardType="numeric"
-              value={amount}
-              onChangeText={setAmount}
-              editable={!isSending}
-            />
-            <Text style={styles.currencySymbol}>FCFA</Text>
-          </View>
+        {/* RÉGION */}
+        <Text style={[styles.label, { marginTop: 20 }]}>Région de retrait</Text>
 
-          <View style={styles.suggestionsRow}>
-            {['5000', '10000', '25000', '50000'].map((sug, index) => (
-              <TouchableOpacity
-                key={`sug-${sug}-${index}`}
-                style={[styles.suggestionChip, amount === sug && styles.suggestionChipActive]}
-                onPress={() => setAmount(sug)}
-                disabled={isSending}
-                activeOpacity={0.75}
-              >
-                <Text style={[styles.suggestionText, amount === sug && styles.suggestionTextActive]}>
-                  {parseInt(sug).toLocaleString()}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          {/* ─── FRAIS TOGGLE ─── */}
-          <View style={styles.feesSection}>
-            <View style={styles.feesToggleContainer}>
-              <View style={styles.feesToggleLeft}>
-                <View style={[styles.feesToggleIcon, feesIncluded && styles.feesToggleIconActive]}>
-                  <Text style={{ fontSize: 14 }}>{feesIncluded ? '✅' : '❌'}</Text>
-                </View>
-                <View>
-                  <Text style={styles.feesToggleTitle}>
-                    {feesIncluded ? 'Frais inclus' : 'Hors frais'}
-                  </Text>
-                  <Text style={styles.feesToggleSubtitle}>
-                    {feesIncluded
-                      ? 'Les frais sont déduits du montant reçu'
-                      : 'Les frais sont ajoutés au total débité'}
-                  </Text>
-                </View>
-              </View>
-              <Switch
-                value={feesIncluded}
-                onValueChange={setFeesIncluded}
-                trackColor={{ false: COLORS.border, true: COLORS.primary }}
-                thumbColor="#FFFFFF"
-                disabled={isSending}
-              />
-            </View>
-
-            <View style={styles.feesDetails}>
-              <View style={styles.feesDetailRow}>
-                <Text style={styles.feesDetailLabel}>Montant</Text>
-                <Text style={styles.feesDetailValue}>{safeFormatCurrency(parseInt(amount) || 0)}</Text>
-              </View>
-              <View style={styles.feesDetailRow}>
-                <Text style={styles.feesDetailLabel}>
-                  Frais {amount && parseInt(amount) > 15000 ? '(1,5%)' : '(100 F fixe)'}
-                </Text>
-                <Text style={styles.feesDetailFees}>{safeFormatCurrency(feesDisplay.fees)}</Text>
-              </View>
-              <View style={styles.feesDetailDivider} />
-              <View style={styles.feesDetailRow}>
-                <Text style={styles.feesDetailLabelTotal}>💳 Total débité</Text>
-                <Text style={styles.feesDetailValueTotal}>{safeFormatCurrency(feesDisplay.debited)}</Text>
-              </View>
-              <View style={styles.feesDetailRow}>
-                <Text style={styles.feesDetailLabelReceived}>📥 Bénéficiaire reçoit</Text>
-                <Text style={styles.feesDetailValueReceived}>{safeFormatCurrency(feesDisplay.received)}</Text>
-              </View>
-            </View>
-          </View>
-        </View>
-
-        {/* ═══════════ BOUTON ENVOYER ═══════════ */}
         <TouchableOpacity
-          style={[styles.sendButton, !canSend && styles.sendButtonDisabled]}
-          onPress={handleSend}
-          disabled={!canSend}
-          activeOpacity={0.85}
+          style={[
+            styles.beneficiaryButton,
+            selectedDepartement && styles.beneficiaryButtonFilled,
+          ]}
+          onPress={() => {
+            if (isLoadingDepartements) return;
+            if (departementsError) {
+              loadDepartements();
+              return;
+            }
+            setRegionSearch('');
+            setRegionModalVisible(true);
+          }}
+          activeOpacity={0.7}
+          disabled={isSending}
         >
-          {isSending ? (
-            <View style={styles.sendButtonContent}>
-              <ActivityIndicator color="#FFFFFF" size="small" />
-              <Text style={styles.sendButtonText}>Transfert en cours…</Text>
-            </View>
+          {selectedDepartement ? (
+            <>
+              <View style={[styles.beneficiaryAvatar, { backgroundColor: COLORS.primary }]}>
+                <IconLocation color="#FFFFFF" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.beneficiaryName} numberOfLines={1}>
+                  {selectedDepartement.designation}
+                </Text>
+                <Text style={styles.beneficiaryPhone}>
+                  Guichet NT Albey
+                </Text>
+              </View>
+              <IconArrowRight color={COLORS.primary} size={16} />
+            </>
           ) : (
-            <View style={styles.sendButtonContent}>
-              <Text style={[styles.sendButtonText, !canSend && styles.sendButtonTextDisabled]}>
-                {amount && parseInt(amount) > 0
-                  ? `Envoyer ${parseInt(amount).toLocaleString()} FCFA`
-                  : 'Envoyer'}
-              </Text>
-              {canSend && (
-                <View style={styles.sendIconCircle}>
-                  <IconArrowRight />
-                </View>
+            <>
+              <View style={styles.beneficiaryEmptyIcon}>
+                <IconLocation color={COLORS.primary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.beneficiaryEmptyText}>
+                  {isLoadingDepartements
+                    ? 'Chargement des régions…'
+                    : departementsError
+                      ? 'Régions indisponibles'
+                      : 'Choisir une région'}
+                </Text>
+                {departementsError && !isLoadingDepartements && (
+                  <Text style={{ fontSize: 11, color: COLORS.danger, marginTop: 2, fontWeight: '500' }}>
+                    Tapez pour réessayer
+                  </Text>
+                )}
+              </View>
+              {isLoadingDepartements ? (
+                <ActivityIndicator size="small" color={COLORS.primary} />
+              ) : departementsError ? (
+                <IconRefresh color={COLORS.primary} />
+              ) : (
+                <IconArrowRight color={COLORS.primary} size={16} />
               )}
-            </View>
+            </>
           )}
         </TouchableOpacity>
-
       </ScrollView>
 
-      {/* ═══════════════ MODAL SÉLECTION DÉPARTEMENT ═══════════════ */}
-      <Modal visible={regionModalVisible} transparent onRequestClose={() => setRegionModalVisible(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.regionModalContent, { width: modalWidth, maxHeight: height * 0.8 }]}>
-            <View style={styles.modalDragHandle} />
-            <View style={styles.regionModalHeader}>
-              <Text style={styles.regionModalTitle}>Choisir une région</Text>
-              <Text style={styles.regionModalSubtitle}>
-                {filteredDepartements.length} région{filteredDepartements.length > 1 ? 's' : ''} disponible{filteredDepartements.length > 1 ? 's' : ''}
-              </Text>
+      {/* CTA FIXE */}
+      {!pinRequired && (
+        <View style={[styles.ctaContainer, { paddingBottom: Math.max(insets.bottom, 14) + 12 }]}>
+          <TouchableOpacity
+            style={[styles.cta, !canSend && styles.ctaDisabled]}
+            onPress={handleSend}
+            disabled={!canSend}
+            activeOpacity={0.85}
+          >
+            {isSending || isVerifyingAuth ? (
+              <View style={styles.ctaContent}>
+                <ActivityIndicator color="#FFFFFF" size="small" />
+                <Text style={styles.ctaText}>
+                  {isSending ? 'Transfert en cours…' : 'Vérification…'}
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.ctaContent}>
+                {isBiometricAvailable && useBiometric && canSend && (
+                  <IconFingerprint color="#FFFFFF" size={20} />
+                )}
+                <Text style={[styles.ctaText, !canSend && styles.ctaTextDisabled]}>
+                  {ctaLabel}
+                </Text>
+              </View>
+            )}
+          </TouchableOpacity>
+
+          {ctaHint ? (
+            <Text style={styles.ctaHintText}>{ctaHint}</Text>
+          ) : null}
+        </View>
+      )}
+
+      {/* MODAL RÉGION */}
+      <Modal
+        visible={regionModalVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => { setRegionModalVisible(false); setRegionSearch(''); }}
+      >
+        <View style={styles.sheetOverlay}>
+          <TouchableOpacity
+            style={styles.sheetBackdrop}
+            onPress={() => { setRegionModalVisible(false); setRegionSearch(''); }}
+            activeOpacity={1}
+          />
+          <View style={[styles.sheetContent, { maxHeight: height * 0.85 }]}>
+            <View style={styles.sheetHandle} />
+
+            <View style={styles.sheetHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.sheetTitle}>Choisir une région</Text>
+                <Text style={styles.sheetSubtitle}>
+                  {filteredDepartements.length} région{filteredDepartements.length > 1 ? 's' : ''} disponible{filteredDepartements.length > 1 ? 's' : ''}
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => { setRegionModalVisible(false); setRegionSearch(''); }}
+                style={styles.sheetCloseBtn}
+                activeOpacity={0.7}
+              >
+                <IconClose />
+              </TouchableOpacity>
             </View>
 
-            <View style={styles.searchWrapper}>
-              <IconSearch />
+            <View style={styles.searchInputRow}>
+              <View style={styles.searchIconWrap}>
+                <IconSearch />
+              </View>
               <TextInput
                 style={styles.searchInput}
                 placeholder="Rechercher une région…"
                 placeholderTextColor={COLORS.textMuted}
-                value={searchQuery}
-                onChangeText={setSearchQuery}
+                value={regionSearch}
+                onChangeText={setRegionSearch}
                 autoCorrect={false}
               />
-              {searchQuery !== '' && (
-                <TouchableOpacity onPress={() => setSearchQuery('')} activeOpacity={0.7}>
+              {regionSearch !== '' && (
+                <TouchableOpacity onPress={() => setRegionSearch('')} activeOpacity={0.7}>
                   <Text style={styles.clearSearchText}>✕</Text>
                 </TouchableOpacity>
               )}
             </View>
 
             {isLoadingDepartements ? (
-              <View style={styles.regionLoading}>
+              <View style={styles.sheetLoading}>
                 <ActivityIndicator size="large" color={COLORS.primary} />
-                <Text style={styles.regionLoadingText}>Chargement des régions…</Text>
+                <Text style={{ marginTop: 12, color: COLORS.textSecondary, fontSize: 13, fontWeight: '500' }}>
+                  Chargement des régions…
+                </Text>
+              </View>
+            ) : departementsError ? (
+              <View style={styles.sheetEmpty}>
+                <Text style={styles.sheetEmptyEmoji}>⚠️</Text>
+                <Text style={styles.sheetEmptyTitle}>{departementsError}</Text>
+                <TouchableOpacity
+                  style={styles.retryButton}
+                  onPress={loadDepartements}
+                  activeOpacity={0.85}
+                >
+                  <IconRefresh color="#FFFFFF" />
+                  <Text style={styles.retryButtonText}>Réessayer</Text>
+                </TouchableOpacity>
               </View>
             ) : filteredDepartements.length === 0 ? (
-              <View style={styles.regionEmpty}>
-                <Text style={styles.regionEmptyEmoji}>📍</Text>
-                <Text style={styles.regionEmptyText}>Aucune région trouvée</Text>
+              <View style={styles.sheetEmpty}>
+                <Text style={styles.sheetEmptyEmoji}>📍</Text>
+                <Text style={styles.sheetEmptyTitle}>Aucune région trouvée</Text>
               </View>
             ) : (
               <FlatList
                 data={filteredDepartements}
                 keyExtractor={(item) => String(item.id)}
                 showsVerticalScrollIndicator={false}
-                contentContainerStyle={{ paddingBottom: 8 }}
+                contentContainerStyle={{ paddingBottom: 20 }}
                 keyboardShouldPersistTaps="handled"
                 renderItem={({ item }) => {
                   const isSelected = selectedDepartement?.id === item.id;
                   return (
                     <TouchableOpacity
-                      style={[styles.regionItem, isSelected && styles.regionItemSelected]}
+                      style={styles.contactRow}
                       onPress={() => {
+                        hapticTap('light');
                         setSelectedDepartement(item);
                         setRegionModalVisible(false);
-                        setSearchQuery('');
+                        setRegionSearch('');
                       }}
                       activeOpacity={0.7}
                     >
-                      <View style={[styles.regionItemIcon, isSelected && styles.regionItemIconSelected]}>
+                      <View style={[
+                        styles.contactRowAvatar,
+                        { backgroundColor: isSelected ? COLORS.primary : COLORS.primarySoft },
+                      ]}>
                         <IconLocation color={isSelected ? '#FFFFFF' : COLORS.primary} />
                       </View>
-                      <Text style={[styles.regionItemText, isSelected && styles.regionItemTextSelected]}>
-                        {item.designation}
-                      </Text>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[
+                          styles.contactRowName,
+                          isSelected && { color: COLORS.primary, fontWeight: '800' },
+                        ]} numberOfLines={1}>
+                          {item.designation}
+                        </Text>
+                        <Text style={styles.contactRowPhone}>
+                          Guichet NT Albey
+                        </Text>
+                      </View>
                       {isSelected && (
-                        <View style={styles.regionItemCheck}>
+                        <View style={styles.contactRowCheck}>
                           <IconCheckSmall />
                         </View>
                       )}
@@ -1049,46 +1339,114 @@ ${details.feesIncluded ? '✅ Frais inclus' : '❌ Hors frais'}
                 }}
               />
             )}
-
-            <TouchableOpacity
-              style={styles.regionCloseButton}
-              onPress={() => { setRegionModalVisible(false); setSearchQuery(''); }}
-              activeOpacity={0.75}
-            >
-              <Text style={styles.regionCloseButtonText}>Fermer</Text>
-            </TouchableOpacity>
           </View>
         </View>
       </Modal>
 
-      {/* ═══════════════ MODAL CONFIRMATION ═══════════════ */}
+      {/* MODAL CONFIRMATION */}
       <Modal
-        animationType="slide"
-        transparent={true}
         visible={modalVisible}
+        animationType="slide"
+        transparent
         onRequestClose={() => {
           if (isSending || isVerifyingAuth) return;
-          setModalVisible(false);
-          setPin('');
-          setUseBiometric(isBiometricAvailable);
+          closeConfirmModal();
         }}
       >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.confirmModalContent, { width: modalWidth }]}>
-            <ScrollView showsVerticalScrollIndicator={false}>
+        <View style={styles.sheetOverlay}>
+          <TouchableOpacity
+            style={styles.sheetBackdrop}
+            onPress={() => {
+              if (isSending || isVerifyingAuth) return;
+              closeConfirmModal();
+            }}
+            activeOpacity={1}
+          />
+          <Animated.View
+            style={[
+              styles.confirmSheetContent,
+              { maxHeight: height * 0.92, transform: [{ translateY: sheetTranslateY }] },
+            ]}
+            {...sheetPanResponder.panHandlers}
+          >
+            <View style={styles.sheetHandle} />
+
+            <View style={styles.confirmHeader}>
+              <Text style={styles.confirmTitle}>Confirmer le transfert</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  if (isSending || isVerifyingAuth) return;
+                  closeConfirmModal();
+                }}
+                style={styles.sheetCloseBtn}
+                activeOpacity={0.7}
+              >
+                <IconClose />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={{ paddingBottom: 20 }}
+            >
               <View style={styles.confirmIconWrapper}>
                 <IconTransferAgencyBig />
               </View>
 
-              <Text style={styles.confirmTitle}>Confirmer le transfert</Text>
-              <Text style={styles.confirmAmount}>
-                {safeFormatCurrency(parseInt(amount) || 0)}
-              </Text>
+              <Text style={styles.confirmAmount}>{numericAmount.toLocaleString('fr-FR')} FCFA</Text>
               <Text style={styles.confirmRecipient}>
                 à {beneficiaryName}
               </Text>
 
-              {/* ═══════════ RÉCAP HARMONISÉ ═══════════ */}
+              {/* FRAIS */}
+              <View style={styles.feesSection}>
+                <View style={styles.feesToggleContainer}>
+                  <View style={styles.feesToggleLeft}>
+                    <View style={[styles.feesToggleIcon, feesIncluded && styles.feesToggleIconActive]}>
+                      <Text style={{ fontSize: 14 }}>{feesIncluded ? '✅' : '❌'}</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.feesToggleTitle}>
+                        {feesIncluded ? 'Frais inclus' : 'Hors frais'}
+                      </Text>
+                      <Text style={styles.feesToggleSubtitle}>
+                        {feesIncluded
+                          ? 'Les frais sont déduits du montant reçu'
+                          : 'Les frais sont ajoutés au total débité'}
+                      </Text>
+                    </View>
+                  </View>
+                  <Switch
+                    value={feesIncluded}
+                    onValueChange={setFeesIncluded}
+                    trackColor={{ false: COLORS.border, true: COLORS.primary }}
+                    thumbColor="#FFFFFF"
+                    disabled={isSending || isVerifyingAuth}
+                  />
+                </View>
+
+                <View style={styles.feesDetails}>
+                  <View style={styles.feesDetailRow}>
+                    <Text style={styles.feesDetailLabel}>Montant</Text>
+                    <Text style={styles.feesDetailValue}>{safeFormatCurrency(numericAmount)}</Text>
+                  </View>
+                  <View style={styles.feesDetailRow}>
+                    <Text style={styles.feesDetailLabel}>{getFeesLabel()}</Text>
+                    <Text style={styles.feesDetailFees}>{safeFormatCurrency(feesDisplay.fees)}</Text>
+                  </View>
+                  <View style={styles.feesDetailDivider} />
+                  <View style={styles.feesDetailRow}>
+                    <Text style={styles.feesDetailLabelTotal}>💳 Total débité</Text>
+                    <Text style={styles.feesDetailValueTotal}>{getConfirmationTotal()}</Text>
+                  </View>
+                  <View style={styles.feesDetailRow}>
+                    <Text style={styles.feesDetailLabelReceived}>📥 Bénéficiaire reçoit</Text>
+                    <Text style={styles.feesDetailValueReceived}>{getConfirmationReceived()}</Text>
+                  </View>
+                </View>
+              </View>
+
               <View style={styles.confirmInfoBox}>
                 <View style={styles.confirmInfoRow}>
                   <Text style={styles.confirmInfoLabel}>📍 Région</Text>
@@ -1097,15 +1455,9 @@ ${details.feesIncluded ? '✅ Frais inclus' : '❌ Hors frais'}
                   </Text>
                 </View>
                 <View style={styles.confirmInfoRow}>
-                  <Text style={styles.confirmInfoLabel}>💰 Montant</Text>
+                  <Text style={styles.confirmInfoLabel}>📞 Bénéficiaire</Text>
                   <Text style={styles.confirmInfoValue}>
-                    {safeFormatCurrency(parseInt(amount) || 0)}
-                  </Text>
-                </View>
-                <View style={styles.confirmInfoRow}>
-                  <Text style={styles.confirmInfoLabel}>📋 Frais</Text>
-                  <Text style={styles.confirmInfoValue}>
-                    {safeFormatCurrency(feesDisplay.fees)}
+                    +227 {cleanPhone}
                   </Text>
                 </View>
                 <View style={styles.confirmInfoRow}>
@@ -1114,143 +1466,110 @@ ${details.feesIncluded ? '✅ Frais inclus' : '❌ Hors frais'}
                     {feesIncluded ? 'Frais inclus' : 'Hors frais'}
                   </Text>
                 </View>
-                <View style={styles.confirmInfoDivider} />
-                <View style={styles.confirmInfoRow}>
-                  <Text style={styles.confirmInfoLabelTotal}>💳 Total débité</Text>
-                  <Text style={styles.confirmInfoValueTotal}>
-                    {safeFormatCurrency(feesDisplay.debited)}
-                  </Text>
-                </View>
-                <View style={styles.confirmInfoRow}>
-                  <Text style={styles.confirmInfoLabelReceived}>📥 Bénéficiaire reçoit</Text>
-                  <Text style={styles.confirmInfoValueReceived}>
-                    {safeFormatCurrency(feesDisplay.received)}
-                  </Text>
-                </View>
               </View>
 
-              {/* Code de retrait */}
               <View style={styles.confirmCodeBox}>
                 <Text style={styles.confirmCodeLabel}>🔑 CODE DE RETRAIT</Text>
                 <Text style={styles.confirmCode}>{generatedCode}</Text>
               </View>
 
-              {isBiometricAvailable && useBiometric ? (
-                <>
-                  <Text style={styles.confirmHintText}>Confirmez avec votre empreinte</Text>
-                  <TouchableOpacity
-                    style={styles.biometricButton}
-                    onPress={authenticateWithBiometrics}
-                    activeOpacity={0.75}
-                    disabled={isSending || isVerifyingAuth}
-                  >
-                    {isSending || isVerifyingAuth ? (
-                      <ActivityIndicator color={COLORS.primary} size="small" />
-                    ) : (
-                      <Image source={require('../assets/images/print.png')} style={styles.biometricIcon} />
-                    )}
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.switchMethodButton}
-                    onPress={() => setUseBiometric(false)}
-                    disabled={isSending || isVerifyingAuth}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={styles.switchMethodText}>🔑 Utiliser mon mot de passe</Text>
-                  </TouchableOpacity>
-                </>
-              ) : (
-                <>
-                  <Text style={styles.confirmHintText}>
-                    Entrez votre mot de passe (8 à 20 caractères)
-                  </Text>
-
-                  <View style={styles.pinInputWrapper}>
+              {pinRequired && (
+                <View style={styles.pinInline}>
+                  <View style={styles.pinInlineHeader}>
+                    <Text style={styles.pinInlineLabel}>
+                      {isBiometricAvailable && pinRequired
+                        ? 'Empreinte indisponible — entrez votre mot de passe'
+                        : 'Confirmez avec votre mot de passe'}
+                    </Text>
+                    <Text style={styles.pinInlineCounter}>{pin.length}/20</Text>
+                  </View>
+                  <View style={styles.pinInlineRow}>
                     <TextInput
-                      style={styles.pinInput}
+                      ref={pinInputRef}
+                      style={styles.pinInlineInput}
                       placeholder="••••••••"
                       placeholderTextColor={COLORS.textMuted}
-                      keyboardType="default"
+                      secureTextEntry={!pinVisible}
                       autoCapitalize="none"
                       autoCorrect={false}
-                      secureTextEntry={!pinVisible}
                       maxLength={20}
                       value={pin}
                       onChangeText={setPin}
-                      textAlign="center"
                       editable={!isSending && !isVerifyingAuth}
+                      textAlign="center"
                     />
                     <TouchableOpacity
-                      style={styles.pinEyeButton}
+                      style={styles.pinInlineEye}
                       onPress={() => setPinVisible(v => !v)}
-                      disabled={isSending || isVerifyingAuth}
                       activeOpacity={0.7}
-                      hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                     >
                       {pinVisible ? <IconEyeOpen /> : <IconEyeClosed />}
                     </TouchableOpacity>
                   </View>
-
-                  <TouchableOpacity
-                    style={styles.pinToggleLabelWrapper}
-                    onPress={() => setPinVisible(v => !v)}
-                    disabled={isSending || isVerifyingAuth}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={styles.pinToggleLabelText}>
-                      {pinVisible ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
-                    </Text>
-                  </TouchableOpacity>
-
-                  {isBiometricAvailable && (
+                  <View style={styles.pinInlineActions}>
                     <TouchableOpacity
-                      style={styles.switchMethodButton}
-                      onPress={() => setUseBiometric(true)}
+                      style={styles.pinInlineCancel}
+                      onPress={() => {
+                        setPinRequired(false);
+                        setPin('');
+                        Keyboard.dismiss();
+                      }}
                       disabled={isSending || isVerifyingAuth}
-                      activeOpacity={0.7}
+                      activeOpacity={0.75}
                     >
-                      <Text style={styles.switchMethodText}>👆 Utiliser mon empreinte</Text>
+                      <Text style={styles.pinInlineCancelText}>Annuler</Text>
                     </TouchableOpacity>
-                  )}
-
-                  <TouchableOpacity
-                    style={styles.confirmButtonStandalone}
-                    onPress={confirmWithPin}
-                    disabled={isSending || isVerifyingAuth}
-                    activeOpacity={0.85}
-                  >
-                    {isSending || isVerifyingAuth ? (
-                      <ActivityIndicator color="#FFFFFF" size="small" />
-                    ) : (
-                      <Text style={styles.confirmButtonTextStandalone}>Confirmer</Text>
-                    )}
-                  </TouchableOpacity>
-                </>
+                    <TouchableOpacity
+                      style={[
+                        styles.pinInlineConfirm,
+                        (!pin || pin.length < 8 || isSending || isVerifyingAuth) && styles.pinInlineConfirmDisabled,
+                      ]}
+                      onPress={confirmWithPin}
+                      disabled={!pin || pin.length < 8 || isSending || isVerifyingAuth}
+                      activeOpacity={0.85}
+                    >
+                      {isSending || isVerifyingAuth ? (
+                        <ActivityIndicator color="#FFFFFF" size="small" />
+                      ) : (
+                        <Text style={styles.pinInlineConfirmText}>Confirmer</Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                </View>
               )}
 
-              <TouchableOpacity
-                style={styles.cancelButtonStandalone}
-                onPress={() => {
-                  setModalVisible(false);
-                  setPin('');
-                  setUseBiometric(isBiometricAvailable);
-                }}
-                disabled={isSending || isVerifyingAuth}
-                activeOpacity={0.75}
-              >
-                <Text style={styles.cancelButtonTextStandalone}>
-                  {isSending || isVerifyingAuth ? 'Traitement en cours…' : 'Annuler'}
-                </Text>
-              </TouchableOpacity>
+              {!pinRequired && (
+                <TouchableOpacity
+                  style={[
+                    styles.confirmButton,
+                    (isSending || isVerifyingAuth) && styles.confirmButtonDisabled,
+                  ]}
+                  onPress={handleModalConfirm}
+                  disabled={isSending || isVerifyingAuth}
+                  activeOpacity={0.85}
+                >
+                  {isSending || isVerifyingAuth ? (
+                    <ActivityIndicator color="#FFFFFF" size="small" />
+                  ) : (
+                    <View style={styles.confirmButtonContent}>
+                      {isBiometricAvailable && useBiometric && (
+                        <IconFingerprint color="#FFFFFF" size={20} />
+                      )}
+                      <Text style={styles.confirmButtonText}>Confirmer</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              )}
             </ScrollView>
-          </View>
+          </Animated.View>
         </View>
       </Modal>
 
-      {/* ═══════════════ MODAL REÇU (harmonisé) ═══════════════ */}
+      {/* MODAL REÇU */}
       <Modal
         animationType="slide"
-        transparent={true}
+        transparent
         visible={receiptModalVisible}
         onRequestClose={() => setReceiptModalVisible(false)}
       >
@@ -1261,7 +1580,6 @@ ${details.feesIncluded ? '✅ Frais inclus' : '❌ Hors frais'}
               { width: receiptModalWidth, maxHeight: receiptMaxHeight },
             ]}
           >
-            {/* HEADER COMPACT */}
             <View style={styles.receiptHeader}>
               <View style={styles.receiptIcon}>
                 <Text style={styles.receiptIconText}>✅</Text>
@@ -1270,7 +1588,6 @@ ${details.feesIncluded ? '✅ Frais inclus' : '❌ Hors frais'}
               <Text style={styles.receiptSubtitle}>Transaction effectuée avec succès</Text>
             </View>
 
-            {/* CONTENU SCROLLABLE */}
             <ScrollView
               style={styles.receiptScroll}
               contentContainerStyle={styles.receiptScrollContent}
@@ -1279,7 +1596,6 @@ ${details.feesIncluded ? '✅ Frais inclus' : '❌ Hors frais'}
             >
               {transactionDetails ? (
                 <>
-                  {/* BÉNÉFICIAIRE */}
                   <View style={styles.receiptCard}>
                     <Text style={styles.receiptSectionLabel}>BÉNÉFICIAIRE</Text>
 
@@ -1307,7 +1623,6 @@ ${details.feesIncluded ? '✅ Frais inclus' : '❌ Hors frais'}
                     </View>
                   </View>
 
-                  {/* MONTANTS */}
                   <View style={styles.receiptCard}>
                     <Text style={styles.receiptSectionLabel}>MONTANTS</Text>
 
@@ -1345,7 +1660,6 @@ ${details.feesIncluded ? '✅ Frais inclus' : '❌ Hors frais'}
                     </View>
                   </View>
 
-                  {/* CODE DE RETRAIT */}
                   <View style={styles.receiptCodeCard}>
                     <View style={styles.receiptCodeHeader}>
                       <IconSparkle />
@@ -1370,7 +1684,6 @@ ${details.feesIncluded ? '✅ Frais inclus' : '❌ Hors frais'}
               )}
             </ScrollView>
 
-            {/* ACTIONS FIXES EN BAS */}
             <View style={styles.receiptActionsContainer}>
               <View style={styles.receiptButtons}>
                 <TouchableOpacity
@@ -1406,109 +1719,212 @@ ${details.feesIncluded ? '✅ Frais inclus' : '❌ Hors frais'}
           </View>
         </View>
       </Modal>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
 // ═══════════════════════════════════════════════════════════════
-// 🎨 STYLES PREMIUM
+// 🎨 STYLES
 // ═══════════════════════════════════════════════════════════════
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
-  scrollContent: { paddingBottom: 40, paddingTop: 16 },
 
-  // ═══════════════ HEADER ═══════════════
-  header: {
+  // TOAST
+  toastContainer: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? 60 : 40,
+    left: 20,
+    right: 20,
+    borderRadius: 16,
+    padding: 16,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    zIndex: 9999,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    elevation: 10,
+  },
+  toastIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  toastContent: { flex: 1 },
+  toastTitle: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '800',
+    marginBottom: 2,
+    letterSpacing: -0.2,
+  },
+  toastMessage: {
+    color: 'rgba(255,255,255,0.9)',
+    fontSize: 13,
+    fontWeight: '500',
+    lineHeight: 18,
+  },
+
+  // Header
+  header: {
     paddingHorizontal: 16,
     paddingTop: 52,
-    paddingBottom: 16,
-    backgroundColor: COLORS.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.borderSoft,
-    ...Platform.select({
-      ios: {
-        shadowColor: COLORS.shadow,
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.04,
-        shadowRadius: 8,
-      },
-      android: { elevation: 2 },
-    }),
+    paddingBottom: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   backButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
+    width: 44, height: 44, borderRadius: 22,
     backgroundColor: COLORS.surfaceAlt,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: COLORS.borderSoft,
-  },
-  headerCenter: { alignItems: 'center', flex: 1 },
-  headerTitle: { fontSize: 18, fontWeight: '800', color: COLORS.textPrimary, letterSpacing: -0.3 },
-  headerSubtitle: { fontSize: 11, color: COLORS.textMuted, marginTop: 2, fontWeight: '500' },
-
-  // ═══════════════ STEP HEADERS ═══════════════
-  // Étape 1 : premier bloc collé au header
-  stepHeaderFirst: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    marginTop: 4,
-    marginBottom: 10,
-    gap: 10,
-  },
-  stepHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    marginTop: 24,
-    marginBottom: 10,
-    gap: 10,
-  },
-  stepBadge: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: COLORS.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  stepBadgeText: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
-  stepTitle: { fontSize: 15, fontWeight: '800', color: COLORS.textPrimary, letterSpacing: -0.2 },
-
-  // ═══════════════ CARD ═══════════════
-  card: {
-    backgroundColor: COLORS.surface,
-    marginHorizontal: 16,
-    borderRadius: 20,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: COLORS.borderSoft,
-    ...Platform.select({
-      ios: {
-        shadowColor: COLORS.shadow,
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.05,
-        shadowRadius: 12,
-      },
-      android: { elevation: 2 },
-    }),
+    alignItems: 'center', justifyContent: 'center',
   },
 
-  // ═══════════════ INPUTS ═══════════════
-  inputLabel: {
-    fontSize: 12,
+  // Contenu
+  scrollContent: {
+    paddingHorizontal: 24,
+    paddingTop: 8,
+    paddingBottom: 120,
+  },
+  label: {
+    fontSize: 11,
     fontWeight: '700',
-    color: COLORS.textSecondary,
-    marginBottom: 8,
-    marginTop: 4,
-    letterSpacing: 0.2,
+    color: COLORS.textMuted,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    marginBottom: 12,
   },
+
+  // MONTANT
+  amountWrapper: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 24,
+    paddingHorizontal: 16,
+    marginTop: 4,
+    borderRadius: 20,
+    borderWidth: 2,
+    borderColor: COLORS.border,
+    borderStyle: 'dashed',
+    backgroundColor: COLORS.surfaceAlt,
+    position: 'relative',
+    minHeight: 140,
+  },
+  amountWrapperFocused: {
+    borderColor: COLORS.primary,
+    borderStyle: 'solid',
+    backgroundColor: COLORS.primarySoft,
+  },
+  amountWrapperError: {
+    borderColor: COLORS.danger,
+    backgroundColor: COLORS.dangerSoft,
+  },
+  amountText: {
+    fontSize: 68,
+    fontWeight: '800',
+    color: COLORS.textPrimary,
+    letterSpacing: -3,
+    lineHeight: 76,
+    textAlign: 'center',
+    includeFontPadding: false,
+  },
+  amountTextError: { color: COLORS.danger },
+  amountEmptyState: {
+    fontSize: 34,
+    fontWeight: '700',
+    color: COLORS.textMuted,
+    letterSpacing: -0.5,
+    lineHeight: 44,
+    textAlign: 'center',
+  },
+  amountCurrency: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: COLORS.textMuted,
+    letterSpacing: 3,
+    textAlign: 'center',
+    marginTop: 4,
+  },
+  amountHiddenInput: {
+    position: 'absolute',
+    opacity: 0,
+    width: '100%',
+    height: '100%',
+    top: 0,
+    left: 0,
+  },
+  amountErrorRow: {
+    alignItems: 'center',
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  amountErrorText: {
+    fontSize: 12.5,
+    color: COLORS.danger,
+    fontWeight: '700',
+  },
+  balanceHint: {
+    fontSize: 11.5,
+    color: COLORS.textMuted,
+    fontWeight: '500',
+    textAlign: 'center',
+    marginTop: 14,
+  },
+  keyboardHintRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 10,
+  },
+  keyboardHintIcon: { fontSize: 14 },
+  keyboardHintLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.textMuted,
+    letterSpacing: 0.3,
+  },
+  customCaret: {
+    position: 'absolute',
+    width: 3,
+    height: 56,
+    borderRadius: 2,
+    backgroundColor: COLORS.primary,
+    top: '50%',
+    marginTop: -28,
+  },
+
+  // Suggestions
+  suggestionsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    justifyContent: 'center',
+    marginTop: 16,
+  },
+  suggestionChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 16,
+    backgroundColor: COLORS.surfaceAlt,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+  },
+  suggestionChipActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  suggestionText: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+  },
+  suggestionTextActive: { color: '#FFFFFF' },
+
+  // Inputs
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1516,7 +1932,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     borderWidth: 1.5,
     borderColor: COLORS.border,
-    marginBottom: 16,
+    marginBottom: 12,
     paddingHorizontal: 4,
   },
   inputIconLeft: {
@@ -1534,86 +1950,322 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-  // ═══════════════ RÉGION PICKER ═══════════════
-  regionPicker: {
+  // Bénéficiaire / Région
+  beneficiaryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: COLORS.surfaceAlt,
+    borderRadius: 18,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    borderStyle: 'dashed',
+  },
+  beneficiaryButtonFilled: {
+    backgroundColor: COLORS.primarySoft,
+    borderColor: COLORS.primary + '30',
+    borderStyle: 'solid',
+  },
+  beneficiaryAvatar: {
+    width: 44, height: 44, borderRadius: 22,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  beneficiaryName: {
+    fontSize: 16, fontWeight: '700', color: COLORS.textPrimary, letterSpacing: -0.2,
+  },
+  beneficiaryPhone: {
+    fontSize: 12, color: COLORS.textSecondary, marginTop: 2, fontWeight: '500',
+  },
+  beneficiaryEmptyIcon: {
+    width: 44, height: 44, borderRadius: 22,
+    backgroundColor: COLORS.primarySoft,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  beneficiaryEmptyText: {
+    fontSize: 15, fontWeight: '600', color: COLORS.textSecondary,
+  },
+
+  // PIN inline
+  pinInline: {
+    marginTop: 16,
+    backgroundColor: COLORS.surfaceAlt,
+    borderRadius: 18,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: COLORS.borderSoft,
+  },
+  pinInlineHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  pinInlineLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.textSecondary,
+    letterSpacing: 0.2,
+    flex: 1,
+  },
+  pinInlineCounter: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: COLORS.textMuted,
+  },
+  pinInlineRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.surface,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: COLORS.primary + '40',
+    paddingHorizontal: 12,
+  },
+  pinInlineInput: {
+    flex: 1,
+    fontSize: 18,
+    fontWeight: '700',
+    letterSpacing: 4,
+    color: COLORS.textPrimary,
+    textAlign: 'center',
+    paddingVertical: 14,
+  },
+  pinInlineEye: { padding: 6, marginLeft: 4 },
+  pinInlineActions: { flexDirection: 'row', gap: 10, marginTop: 14 },
+  pinInlineCancel: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pinInlineCancelText: {
+    color: COLORS.textSecondary, fontSize: 14, fontWeight: '700',
+  },
+  pinInlineConfirm: {
+    flex: 1.4,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: COLORS.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...Platform.select({
+      ios: { shadowColor: COLORS.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 8 },
+      android: { elevation: 3 },
+    }),
+  },
+  pinInlineConfirmDisabled: {
+    backgroundColor: COLORS.border,
+    ...Platform.select({ ios: { shadowOpacity: 0 }, android: { elevation: 0 } }),
+  },
+  pinInlineConfirmText: {
+    color: '#FFFFFF', fontSize: 14, fontWeight: '800', letterSpacing: 0.2,
+  },
+
+  // CTA
+  ctaContainer: {
+    position: 'absolute',
+    left: 0, right: 0, bottom: 0,
+    paddingHorizontal: 24,
+    paddingBottom: Platform.OS === 'ios' ? 40 : 24,
+    paddingTop: 12,
+    backgroundColor: COLORS.background,
+  },
+  cta: {
+    backgroundColor: COLORS.primary,
+    borderRadius: 20,
+    paddingVertical: 20,
+    paddingHorizontal: 24,
+    ...Platform.select({
+      ios: { shadowColor: COLORS.primary, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.3, shadowRadius: 16 },
+      android: { elevation: 6 },
+    }),
+  },
+  ctaDisabled: {
+    backgroundColor: COLORS.surfaceAlt,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    ...Platform.select({ ios: { shadowOpacity: 0 }, android: { elevation: 0 } }),
+  },
+  ctaContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  ctaText: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: 0.3,
+  },
+  ctaTextDisabled: { color: COLORS.textMuted },
+  ctaHintText: {
+    fontSize: 11.5,
+    color: COLORS.textMuted,
+    textAlign: 'center',
+    marginTop: 10,
+    fontWeight: '500',
+    letterSpacing: 0.2,
+    paddingHorizontal: 8,
+  },
+
+  // Bottom sheet
+  sheetOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(11,18,32,0.5)',
+    justifyContent: 'flex-end',
+  },
+  sheetBackdrop: { flex: 1 },
+  sheetContent: {
+    backgroundColor: COLORS.surface,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    paddingBottom: 24,
+  },
+  sheetHandle: {
+    width: 40, height: 4, borderRadius: 2,
+    backgroundColor: COLORS.border,
+    alignSelf: 'center', marginBottom: 20,
+  },
+  sheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 20,
+    gap: 12,
+  },
+  sheetTitle: {
+    fontSize: 22, fontWeight: '800', color: COLORS.textPrimary, letterSpacing: -0.5,
+  },
+  sheetSubtitle: {
+    fontSize: 12, color: COLORS.textSecondary, marginTop: 2, fontWeight: '500',
+  },
+  sheetCloseBtn: {
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: COLORS.surfaceAlt,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  sheetLoading: { alignItems: 'center', paddingVertical: 40 },
+  sheetEmpty: { alignItems: 'center', paddingVertical: 40, paddingHorizontal: 20 },
+  sheetEmptyEmoji: { fontSize: 40, marginBottom: 10 },
+  sheetEmptyTitle: { fontSize: 15, fontWeight: '700', color: COLORS.textSecondary, textAlign: 'center' },
+
+  searchInputRow: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: COLORS.surfaceAlt,
     borderRadius: 14,
     borderWidth: 1.5,
     borderColor: COLORS.border,
-    paddingVertical: 10,
-    paddingHorizontal: 10,
-    gap: 12,
+    marginBottom: 12,
+    overflow: 'hidden',
+    height: 48,
   },
-  regionPickerFilled: {
-    borderColor: COLORS.primary,
-    backgroundColor: COLORS.primarySoft,
-  },
-  regionPickerIconWrap: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
-    backgroundColor: COLORS.surface,
+  searchIconWrap: {
+    paddingHorizontal: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  regionPickerContent: { flex: 1 },
-  regionPickerText: {
+  searchInput: {
+    flex: 1,
+    paddingVertical: 14,
+    paddingHorizontal: 4,
+    fontSize: 15,
+    fontWeight: '600',
+    color: COLORS.textPrimary,
+  },
+  clearSearchText: {
     fontSize: 14,
     color: COLORS.textMuted,
-    fontWeight: '600',
+    fontWeight: '700',
+    paddingHorizontal: 12,
   },
-  regionPickerTextFilled: { color: COLORS.textPrimary, fontWeight: '800' },
-  regionPickerHint: { fontSize: 10, color: COLORS.textMuted, marginTop: 2, fontWeight: '500' },
 
-  // ═══════════════ MONTANT ═══════════════
-  amountInputContainer: {
+  contactRow: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
-    borderBottomWidth: 2,
-    borderBottomColor: COLORS.primary,
-    paddingBottom: 10,
-    marginBottom: 20,
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.borderSoft,
   },
-  amountInput: {
-    flex: 1,
-    fontSize: 42,
-    fontWeight: '800',
-    color: COLORS.textPrimary,
-    padding: 0,
-    letterSpacing: -1.5,
+  contactRowAvatar: {
+    width: 44, height: 44, borderRadius: 22,
+    alignItems: 'center', justifyContent: 'center',
   },
-  currencySymbol: {
-    fontSize: 16,
+  contactRowName: {
+    fontSize: 14.5, fontWeight: '700', color: COLORS.textPrimary, letterSpacing: -0.1,
+    marginBottom: 2,
+  },
+  contactRowPhone: {
+    fontSize: 11.5, color: COLORS.textMuted, fontWeight: '500',
+  },
+  contactRowCheck: {
+    width: 24, height: 24, borderRadius: 12,
+    backgroundColor: COLORS.primary,
+    alignItems: 'center', justifyContent: 'center',
+  },
+
+  retryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 14,
+    marginTop: 16,
+    ...Platform.select({
+      ios: { shadowColor: COLORS.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 8 },
+      android: { elevation: 3 },
+    }),
+  },
+  retryButtonText: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
+
+  // Confirm sheet
+  confirmSheetContent: {
+    backgroundColor: COLORS.surface,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    paddingBottom: 24,
+  },
+  confirmHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  confirmTitle: {
+    fontSize: 20, fontWeight: '800', color: COLORS.textPrimary, letterSpacing: -0.3,
+  },
+  confirmIconWrapper: { alignItems: 'center', marginBottom: 12 },
+  confirmAmount: {
+    fontSize: 32,
     fontWeight: '800',
     color: COLORS.primary,
+    letterSpacing: -1,
     marginBottom: 6,
-    marginLeft: 8,
-    letterSpacing: 0.5,
+    textAlign: 'center',
+  },
+  confirmRecipient: {
+    fontSize: 14,
+    color: COLORS.textSecondary,
+    fontWeight: '600',
+    marginBottom: 18,
+    textAlign: 'center',
   },
 
-  suggestionsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  suggestionChip: {
-    flexGrow: 1,
-    minWidth: 76,
-    backgroundColor: COLORS.surfaceAlt,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 12,
-    borderWidth: 1.5,
-    borderColor: COLORS.border,
-    alignItems: 'center',
-  },
-  suggestionChipActive: {
-    backgroundColor: COLORS.primary,
-    borderColor: COLORS.primary,
-  },
-  suggestionText: { color: COLORS.textPrimary, fontSize: 13, fontWeight: '700', letterSpacing: -0.1 },
-  suggestionTextActive: { color: '#FFFFFF' },
-
-  // ═══════════════ FRAIS ═══════════════
-  feesSection: { marginTop: 20, paddingTop: 18, borderTopWidth: 1, borderTopColor: COLORS.borderSoft },
+  feesSection: { marginBottom: 16 },
   feesToggleContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1627,239 +2279,39 @@ const styles = StyleSheet.create({
   },
   feesToggleLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
   feesToggleIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 12,
+    width: 34, height: 34, borderRadius: 12,
     backgroundColor: COLORS.dangerSoft,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: 'center', justifyContent: 'center',
   },
   feesToggleIconActive: { backgroundColor: COLORS.successSoft },
   feesToggleTitle: { fontSize: 13, fontWeight: '800', color: COLORS.textPrimary, letterSpacing: -0.1 },
   feesToggleSubtitle: { fontSize: 10, color: COLORS.textMuted, marginTop: 2, fontWeight: '500' },
-
   feesDetails: {
-    backgroundColor: COLORS.surfaceAlt,
+    backgroundColor: COLORS.primarySoft,
     borderRadius: 14,
     padding: 14,
     borderWidth: 1,
-    borderColor: COLORS.borderSoft,
+    borderColor: COLORS.primary + '25',
   },
   feesDetailRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 5,
+    paddingVertical: 4,
   },
   feesDetailLabel: { fontSize: 12, color: COLORS.textSecondary, fontWeight: '600' },
   feesDetailValue: { fontSize: 13, fontWeight: '700', color: COLORS.textPrimary },
   feesDetailFees: { fontSize: 13, fontWeight: '800', color: COLORS.danger },
-  feesDetailDivider: { height: 1, backgroundColor: COLORS.border, marginVertical: 8 },
+  feesDetailDivider: { height: 1, backgroundColor: COLORS.primary + '20', marginVertical: 6 },
   feesDetailLabelTotal: { fontSize: 13, fontWeight: '800', color: COLORS.primary },
   feesDetailValueTotal: { fontSize: 15, fontWeight: '800', color: COLORS.primary },
   feesDetailLabelReceived: { fontSize: 13, fontWeight: '800', color: COLORS.accent },
   feesDetailValueReceived: { fontSize: 15, fontWeight: '800', color: COLORS.accent },
 
-  // ═══════════════ BOUTON ENVOYER ═══════════════
-  sendButton: {
-    marginHorizontal: 16,
-    marginTop: 24,
-    borderRadius: 18,
-    backgroundColor: COLORS.primary,
-    paddingVertical: 18,
-    paddingHorizontal: 22,
-    ...Platform.select({
-      ios: {
-        shadowColor: COLORS.primary,
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.3,
-        shadowRadius: 16,
-      },
-      android: { elevation: 6 },
-    }),
-  },
-  sendButtonDisabled: {
-    backgroundColor: COLORS.border,
-    ...Platform.select({
-      ios: { shadowOpacity: 0 },
-      android: { elevation: 0 },
-    }),
-  },
-  sendButtonContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  sendButtonText: {
-    fontSize: 17,
-    fontWeight: '800',
-    color: '#FFFFFF',
-    letterSpacing: -0.2,
-    flex: 1,
-  },
-  sendButtonTextDisabled: { color: COLORS.textMuted },
-  sendIconCircle: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: 'rgba(255,255,255,0.22)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  // ═══════════════ MODAL OVERLAY ═══════════════
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(15,23,42,0.55)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalDragHandle: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: COLORS.border,
-    alignSelf: 'center',
-    marginBottom: 16,
-  },
-
-  // ═══════════════ MODAL RÉGION ═══════════════
-  regionModalContent: {
-    backgroundColor: COLORS.surface,
-    borderRadius: 24,
-    padding: 20,
-    marginVertical: 40,
-  },
-  regionModalHeader: { marginBottom: 16 },
-  regionModalTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: COLORS.textPrimary,
-    textAlign: 'center',
-    letterSpacing: -0.3,
-  },
-  regionModalSubtitle: {
-    fontSize: 12,
-    color: COLORS.textMuted,
-    textAlign: 'center',
-    marginTop: 4,
-    fontWeight: '500',
-  },
-  searchWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.surfaceAlt,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    height: 48,
-    gap: 8,
-    borderWidth: 1,
-    borderColor: COLORS.borderSoft,
-    marginBottom: 12,
-  },
-  searchInput: { flex: 1, fontSize: 14, color: COLORS.textPrimary, fontWeight: '500', paddingVertical: 0 },
-  clearSearchText: {
-    fontSize: 14,
-    color: COLORS.textMuted,
-    fontWeight: '700',
-    paddingHorizontal: 4,
-  },
-
-  regionLoading: { alignItems: 'center', paddingVertical: 40 },
-  regionLoadingText: { marginTop: 12, color: COLORS.textSecondary, fontSize: 13, fontWeight: '500' },
-  regionItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-    borderRadius: 14,
-    marginBottom: 4,
-    gap: 12,
-    borderWidth: 1,
-    borderColor: 'transparent',
-  },
-  regionItemSelected: {
-    backgroundColor: COLORS.primarySoft,
-    borderColor: COLORS.primary + '40',
-  },
-  regionItemIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: COLORS.primarySoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  regionItemIconSelected: { backgroundColor: COLORS.primary },
-  regionItemText: {
-    flex: 1,
-    fontSize: 14,
-    fontWeight: '700',
-    color: COLORS.textPrimary,
-    letterSpacing: -0.1,
-  },
-  regionItemTextSelected: { color: COLORS.primary, fontWeight: '800' },
-  regionItemCheck: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: COLORS.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  regionEmpty: { alignItems: 'center', paddingVertical: 40 },
-  regionEmptyEmoji: { fontSize: 48, marginBottom: 8 },
-  regionEmptyText: { fontSize: 14, color: COLORS.textMuted, fontWeight: '500' },
-
-  regionCloseButton: {
-    marginTop: 12,
-    paddingVertical: 14,
-    borderRadius: 14,
-    backgroundColor: COLORS.surfaceAlt,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  regionCloseButtonText: { color: COLORS.textSecondary, fontSize: 15, fontWeight: '700' },
-
-  // ═══════════════ MODAL CONFIRMATION ═══════════════
-  confirmModalContent: {
-    backgroundColor: COLORS.surface,
-    borderRadius: 24,
-    padding: 24,
-    maxHeight: '92%',
-  },
-  confirmIconWrapper: { alignItems: 'center', marginBottom: 16 },
-  confirmTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: COLORS.textPrimary,
-    letterSpacing: -0.2,
-    marginBottom: 6,
-    textAlign: 'center',
-  },
-  confirmAmount: {
-    fontSize: 26,
-    fontWeight: '800',
-    color: COLORS.primary,
-    letterSpacing: -0.5,
-    marginBottom: 4,
-    textAlign: 'center',
-  },
-  confirmRecipient: {
-    fontSize: 14,
-    color: COLORS.textSecondary,
-    fontWeight: '600',
-    marginBottom: 16,
-    textAlign: 'center',
-  },
-
   confirmInfoBox: {
     backgroundColor: COLORS.surfaceAlt,
     borderRadius: 14,
     padding: 14,
-    width: '100%',
     marginBottom: 16,
     borderWidth: 1,
     borderColor: COLORS.borderSoft,
@@ -1879,18 +2331,12 @@ const styles = StyleSheet.create({
     textAlign: 'right',
     marginLeft: 8,
   },
-  confirmInfoDivider: { height: 1, backgroundColor: COLORS.border, marginVertical: 8 },
-  confirmInfoLabelTotal: { fontSize: 13, fontWeight: '800', color: COLORS.primary },
-  confirmInfoValueTotal: { fontSize: 14, fontWeight: '800', color: COLORS.primary },
-  confirmInfoLabelReceived: { fontSize: 13, fontWeight: '800', color: COLORS.accent },
-  confirmInfoValueReceived: { fontSize: 14, fontWeight: '800', color: COLORS.accent },
 
   confirmCodeBox: {
     backgroundColor: COLORS.accentSoft,
     borderRadius: 14,
     padding: 14,
-    width: '100%',
-    marginBottom: 18,
+    marginBottom: 16,
     alignItems: 'center',
     borderWidth: 1,
     borderColor: COLORS.accent + '30',
@@ -1911,136 +2357,44 @@ const styles = StyleSheet.create({
     fontFamily: Platform.OS === 'ios' ? 'Courier New' : 'monospace',
   },
 
-  confirmHintText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: COLORS.textSecondary,
-    marginBottom: 12,
-    textAlign: 'center',
-    width: '100%',
-  },
-
-  pinInputWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.surfaceAlt,
-    borderRadius: 14,
-    borderWidth: 1.5,
-    borderColor: COLORS.primary + '40',
-    paddingHorizontal: 12,
-    marginBottom: 6,
-    width: '100%',
-  },
-  pinInput: {
-    flex: 1,
-    fontSize: 18,
-    fontWeight: '700',
-    letterSpacing: 4,
-    color: COLORS.textPrimary,
-    textAlign: 'center',
-    paddingVertical: 14,
-  },
-  pinEyeButton: {
-    padding: 8,
-    marginLeft: 4,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pinToggleLabelWrapper: {
-    alignSelf: 'center',
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    marginBottom: 8,
-  },
-  pinToggleLabelText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: COLORS.primary,
-    textDecorationLine: 'underline',
-  },
-
-  biometricButton: {
-    backgroundColor: COLORS.primarySoft,
-    width: 76,
-    height: 76,
-    borderRadius: 38,
-    alignItems: 'center',
-    justifyContent: 'center',
-    alignSelf: 'center',
-    marginVertical: 8,
-    borderWidth: 2,
-    borderColor: COLORS.primary + '25',
-  },
-  biometricIcon: {
-    width: 44,
-    height: 44,
-    resizeMode: 'contain',
-    tintColor: COLORS.primary,
-  },
-  switchMethodButton: { marginVertical: 10, paddingVertical: 6, alignItems: 'center' },
-  switchMethodText: {
-    color: COLORS.primary,
-    fontSize: 13,
-    fontWeight: '700',
-    textDecorationLine: 'underline',
-  },
-
-  confirmButtonStandalone: {
+  confirmButton: {
     backgroundColor: COLORS.primary,
-    paddingVertical: 15,
-    paddingHorizontal: 20,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 12,
-    minHeight: 52,
-    width: '100%',
+    borderRadius: 20,
+    paddingVertical: 20,
+    paddingHorizontal: 24,
+    marginTop: 8,
     ...Platform.select({
-      ios: {
-        shadowColor: COLORS.primary,
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.25,
-        shadowRadius: 8,
-      },
-      android: { elevation: 3 },
+      ios: { shadowColor: COLORS.primary, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.3, shadowRadius: 16 },
+      android: { elevation: 6 },
     }),
   },
-  confirmButtonTextStandalone: {
-    color: '#FFFFFF',
+  confirmButtonDisabled: {
+    backgroundColor: COLORS.border,
+    ...Platform.select({ ios: { shadowOpacity: 0 }, android: { elevation: 0 } }),
+  },
+  confirmButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  confirmButtonText: {
     fontSize: 16,
     fontWeight: '800',
+    color: '#FFFFFF',
     letterSpacing: 0.3,
   },
 
-  cancelButtonStandalone: {
-    backgroundColor: COLORS.surfaceAlt,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 10,
-    width: '100%',
-  },
-  cancelButtonTextStandalone: {
-    color: COLORS.textSecondary,
-    fontSize: 15,
-    fontWeight: '700',
-  },
-
-  // ═══════════════ REÇU (harmonisé) ═══════════════
+  // Reçu
   receiptOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(15,23,42,0.6)',
+    backgroundColor: 'rgba(11,18,32,0.6)',
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 12,
     paddingTop: 40,
     paddingBottom: 30,
   },
-
   receiptModalContent: {
     backgroundColor: COLORS.surface,
     borderRadius: 24,
@@ -2050,33 +2404,18 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     flexDirection: 'column',
   },
-
-  receiptHeader: {
-    alignItems: 'center',
-    marginBottom: 10,
-    flexShrink: 0,
-  },
+  receiptHeader: { alignItems: 'center', marginBottom: 10, flexShrink: 0 },
   receiptIcon: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+    width: 50, height: 50, borderRadius: 25,
     backgroundColor: COLORS.successSoft,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: 'center', justifyContent: 'center',
     marginBottom: 8,
   },
   receiptIconText: { fontSize: 24 },
   receiptTitle: { fontSize: 17, fontWeight: '800', color: COLORS.primary, letterSpacing: -0.3 },
   receiptSubtitle: { fontSize: 11, color: COLORS.textMuted, marginTop: 2, fontWeight: '500' },
-
-  receiptScroll: {
-    flexShrink: 1,
-    marginTop: 2,
-  },
-  receiptScrollContent: {
-    paddingBottom: 8,
-  },
-
+  receiptScroll: { flexShrink: 1, marginTop: 2 },
+  receiptScrollContent: { paddingBottom: 8 },
   receiptActionsContainer: {
     paddingTop: 10,
     paddingBottom: 16,
@@ -2085,7 +2424,6 @@ const styles = StyleSheet.create({
     borderTopColor: COLORS.borderSoft,
     flexShrink: 0,
   },
-
   receiptCard: {
     backgroundColor: COLORS.surfaceAlt,
     borderRadius: 14,
@@ -2095,173 +2433,89 @@ const styles = StyleSheet.create({
     borderColor: COLORS.borderSoft,
   },
   receiptSectionLabel: {
-    fontSize: 10,
-    color: COLORS.textMuted,
-    fontWeight: '800',
-    letterSpacing: 1.2,
-    marginBottom: 8,
+    fontSize: 10, color: COLORS.textMuted, fontWeight: '800', letterSpacing: 1.2, marginBottom: 8,
   },
   receiptRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 5,
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 5,
   },
   receiptRowTotal: {
-    borderTopWidth: 1,
-    borderTopColor: COLORS.border,
-    marginTop: 4,
-    paddingTop: 8,
+    borderTopWidth: 1, borderTopColor: COLORS.border, marginTop: 4, paddingTop: 8,
   },
   receiptLabel: { fontSize: 12, color: COLORS.textSecondary, flexShrink: 0, fontWeight: '500' },
   receiptLabelTotal: { fontSize: 13, fontWeight: '800', color: COLORS.primary },
   receiptLabelReceived: { fontSize: 12, fontWeight: '800', color: COLORS.accent },
   receiptValue: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: COLORS.textPrimary,
-    textAlign: 'right',
-    flex: 1,
-    marginLeft: 8,
+    fontSize: 12, fontWeight: '700', color: COLORS.textPrimary,
+    textAlign: 'right', flex: 1, marginLeft: 8,
   },
   receiptValueSent: { color: COLORS.accent, fontWeight: '800' },
   receiptValueFees: { color: COLORS.danger, fontWeight: '700' },
   receiptValueTotal: { fontSize: 14, fontWeight: '800', color: COLORS.primary },
   receiptValueReceived: { fontSize: 13, fontWeight: '800', color: COLORS.accent },
-
   receiptParticipantCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.surface,
-    borderRadius: 10,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    borderWidth: 1,
-    borderColor: COLORS.borderSoft,
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: COLORS.surface, borderRadius: 10,
+    paddingVertical: 8, paddingHorizontal: 10,
+    borderWidth: 1, borderColor: COLORS.borderSoft,
     marginBottom: 4,
   },
   receiptParticipantBadgeTo: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: 30, height: 30, borderRadius: 15,
     backgroundColor: COLORS.accentSoft,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: 'center', justifyContent: 'center',
     marginRight: 10,
   },
-  receiptParticipantBadgeText: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: COLORS.textPrimary,
-    letterSpacing: 0.5,
-  },
+  receiptParticipantBadgeText: { fontSize: 10, fontWeight: '800', color: COLORS.textPrimary, letterSpacing: 0.5 },
   receiptParticipantInfo: { flex: 1 },
   receiptParticipantName: {
-    fontSize: 12.5,
-    fontWeight: '800',
-    color: COLORS.textPrimary,
-    letterSpacing: -0.1,
-    marginBottom: 1,
+    fontSize: 12.5, fontWeight: '800', color: COLORS.textPrimary,
+    letterSpacing: -0.1, marginBottom: 1,
   },
   receiptParticipantPhone: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: COLORS.textSecondary,
-    letterSpacing: 0.2,
+    fontSize: 11, fontWeight: '600', color: COLORS.textSecondary, letterSpacing: 0.2,
   },
-
   receiptCodeCard: {
-    backgroundColor: COLORS.accentSoft,
-    borderRadius: 14,
-    padding: 12,
-    marginBottom: 8,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: COLORS.accent + '25',
+    backgroundColor: COLORS.accentSoft, borderRadius: 14,
+    padding: 12, marginBottom: 8, alignItems: 'center',
+    borderWidth: 1, borderColor: COLORS.accent + '25',
   },
-  receiptCodeHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 6,
-  },
+  receiptCodeHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 },
   receiptCodeLabel: {
-    fontSize: 9,
-    color: '#7A4A1A',
-    textTransform: 'uppercase',
-    letterSpacing: 1.4,
-    fontWeight: '800',
+    fontSize: 9, color: '#7A4A1A', textTransform: 'uppercase', letterSpacing: 1.4, fontWeight: '800',
   },
   receiptCode: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: COLORS.accent,
-    letterSpacing: 1.8,
+    fontSize: 15, fontWeight: '800', color: COLORS.accent, letterSpacing: 1.8,
     fontFamily: Platform.OS === 'ios' ? 'Courier New' : 'monospace',
     textAlign: 'center',
   },
   receiptCodeInfo: {
-    fontSize: 10.5,
-    color: '#7A4A1A',
-    textAlign: 'center',
-    marginTop: 8,
-    fontWeight: '500',
-    lineHeight: 15,
-    opacity: 0.85,
+    fontSize: 10.5, color: '#7A4A1A', textAlign: 'center',
+    marginTop: 8, fontWeight: '500', lineHeight: 15, opacity: 0.85,
   },
-
-  receiptDate: {
-    textAlign: 'center',
-    fontSize: 10.5,
-    color: COLORS.textMuted,
-    marginBottom: 2,
-    fontWeight: '600',
-  },
-
+  receiptDate: { textAlign: 'center', fontSize: 10.5, color: COLORS.textMuted, marginBottom: 2, fontWeight: '600' },
   receiptButtons: { flexDirection: 'row', gap: 8, marginBottom: 8 },
   receiptButton: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 12,
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 6,
+    flex: 1, paddingVertical: 12, borderRadius: 12,
+    alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6,
   },
   receiptCopyButton: {
     backgroundColor: COLORS.primarySoft,
-    borderWidth: 1.5,
-    borderColor: COLORS.primary + '30',
+    borderWidth: 1.5, borderColor: COLORS.primary + '30',
   },
   receiptCopyButtonText: { fontSize: 13, fontWeight: '800', color: COLORS.primary },
   receiptShareButton: {
     backgroundColor: COLORS.accentSoft,
-    borderWidth: 1.5,
-    borderColor: COLORS.accent + '30',
+    borderWidth: 1.5, borderColor: COLORS.accent + '30',
   },
   receiptShareButtonText: { fontSize: 13, fontWeight: '800', color: COLORS.accent },
-
   receiptDoneButton: {
     backgroundColor: COLORS.primary,
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
+    paddingVertical: 14, borderRadius: 12,
+    alignItems: 'center', justifyContent: 'center',
     ...Platform.select({
-      ios: {
-        shadowColor: COLORS.primary,
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.25,
-        shadowRadius: 8,
-      },
+      ios: { shadowColor: COLORS.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 8 },
       android: { elevation: 3 },
     }),
   },
-  receiptDoneButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '800',
-    letterSpacing: 0.3,
-    textAlign: 'center',
-  },
+  receiptDoneButtonText: { color: '#FFFFFF', fontSize: 14, fontWeight: '800', letterSpacing: 0.3, textAlign: 'center' },
 });

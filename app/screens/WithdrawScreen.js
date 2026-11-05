@@ -1,19 +1,17 @@
-// screens/WithdrawScreen.js — Retrait RÉEL avec vrai mot de passe (harmonisé SendMoneyScreen)
-// ✅ v6 : hero + carte solde + infos importantes retirés (écran épuré)
-// ✅ v6 : anciens styles + icônes inutilisés supprimés
-// ✅ v5 : mot de passe RÉEL (8-20 chars) + biométrie via verifyTransactionAuth
-// ✅ v5 : bouton "Confirmer" plein-largeur avec texte visible (plus d'héritage flex:1)
-// ✅ v5 : plus de fallback statique → départements 100% API
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+// screens/WithdrawScreen.js — v12 : PREMIUM UI HARMONISÉE (SendMoneyScreen)
+// ✨ v12 :
+//    ├── Zone montant cliquable (bordure pointillée, focus vert, caret animé)
+//    ├── Placeholder "Combien ?" + hint clavier "Touchez pour saisir"
+//    ├── CTA fixe avec texte d'aide quand désactivé
+//    ├── Toasts premium (plus d'Alert)
+//    ├── PIN inline avec bouton œil
+//    └── Reçu (PDF, partage, copie) inchangé
+// ⚠️ LOGIQUE MÉTIER INCHANGÉE (API, calculs de frais, notifications, PDF)
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
   StyleSheet,
-  ScrollView,
   Image,
-  Alert,
   Modal,
   Share,
   Switch,
@@ -21,7 +19,14 @@ import {
   FlatList,
   ActivityIndicator,
   Platform,
+  Animated,
+  Easing,
+  Keyboard,
+  PanResponder,
+  Vibration,
 } from 'react-native';
+import { TranslatedText as Text, TranslatedTextInput as TextInput, TranslatedAlert as Alert, ThemedView as View, ThemedTouchableOpacity as TouchableOpacity, ThemedScrollView as ScrollView, ThemedKeyboardAvoidingView as KeyboardAvoidingView } from '../context/LanguageContext';
+import { humanizeError } from '../utils/errorHandler';
 import Svg, { Path, Circle, Rect } from 'react-native-svg';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
@@ -38,11 +43,12 @@ import {
   AUTH_METHOD,
   AUTH_CANCELLED,
 } from '../utils/transactionAuth';
+import { isValidPin } from '../utils/validators';
 
 const NOTIFIED_TX_IDS_KEY = '@ntalbey_notified_tx_ids';
 
 // ═══════════════════════════════════════════════════════════════
-// 🎨 PALETTE PREMIUM
+// 🎨 PALETTE PREMIUM — HARMONISÉE avec SendMoneyScreen
 // ═══════════════════════════════════════════════════════════════
 const COLORS = {
   primary:      '#008933',
@@ -50,63 +56,58 @@ const COLORS = {
   primaryDark:  '#006B28',
   accent:       '#FF6600',
   accentSoft:   '#FFF3E0',
-  textPrimary:  '#0F172A',
-  textSecondary:'#64748B',
-  textMuted:    '#94A3B8',
-  border:       '#E2E8F0',
-  borderSoft:   '#F1F5F9',
+  textPrimary:  '#0B1220',
+  textSecondary:'#5A6474',
+  textMuted:    '#A0A8B4',
+  border:       '#E7EAF0',
+  borderSoft:   '#F3F5F9',
   surface:      '#FFFFFF',
-  surfaceAlt:   '#F8FAFC',
-  background:   '#F1F5F9',
+  surfaceAlt:   '#FAFBFD',
+  background:   '#FFFFFF',
   danger:       '#EF4444',
   dangerSoft:   '#FEE2E2',
   success:      '#10B981',
   successSoft:  '#D1FAE5',
   warning:      '#F59E0B',
   warningSoft:  '#FEF3C7',
-  shadow:       '#0F172A',
+  shadow:       '#0B1220',
+  gold:         '#F59E0B',
 };
 
 // ═══════════════════════════════════════════════════════════════
 // 🎯 ICÔNES SVG
 // ═══════════════════════════════════════════════════════════════
 const IconBack = () => (
-  <Svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-    <Path d="M15 18l-6-6 6-6" stroke={COLORS.textPrimary} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+  <Svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+    <Path d="M15 18l-6-6 6-6" stroke={COLORS.textPrimary} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
   </Svg>
 );
 
 const IconLocation = ({ color = COLORS.accent }) => (
-  <Svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+  <Svg width="20" height="20" viewBox="0 0 24 24" fill="none">
     <Path d="M12 22s8-7.5 8-13a8 8 0 10-16 0c0 5.5 8 13 8 13z" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
     <Circle cx="12" cy="9" r="3" stroke={color} strokeWidth="2" />
   </Svg>
 );
 
-const IconChevronDown = ({ color = COLORS.textMuted }) => (
-  <Svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-    <Path d="M6 9l6 6 6-6" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+const IconArrowRight = ({ color = COLORS.primary, size = 16 }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Path d="M5 12h14M12 5l7 7-7 7" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
   </Svg>
 );
 
 const IconCopy = ({ color = COLORS.primary }) => (
-  <Svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+  <Svg width="16" height="16" viewBox="0 0 24 24" fill="none">
     <Rect x="9" y="9" width="13" height="13" rx="2" stroke={color} strokeWidth="1.6" />
     <Path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" stroke={color} strokeWidth="1.6" strokeLinecap="round" />
   </Svg>
 );
 
 const IconPDF = () => (
-  <Svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+  <Svg width="16" height="16" viewBox="0 0 24 24" fill="none">
     <Path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z" stroke={COLORS.danger} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
     <Path d="M14 2v6h6" stroke={COLORS.danger} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
     <Path d="M8 14h8M8 18h6" stroke={COLORS.danger} strokeWidth="1.8" strokeLinecap="round" />
-  </Svg>
-);
-
-const IconArrowDown = () => (
-  <Svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-    <Path d="M12 5v14M19 12l-7 7-7-7" stroke="#FFFFFF" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
   </Svg>
 );
 
@@ -117,7 +118,7 @@ const IconCheckSmall = ({ color = '#FFFFFF' }) => (
 );
 
 const IconSparkle = () => (
-  <Svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+  <Svg width="14" height="14" viewBox="0 0 24 24" fill="none">
     <Path d="M12 2l1.8 5.4L19 9l-5.2 1.6L12 16l-1.8-5.4L5 9l5.2-1.6L12 2z" fill="#FFD700" />
   </Svg>
 );
@@ -130,14 +131,14 @@ const IconSearch = ({ color = COLORS.textMuted }) => (
 );
 
 const IconEyeOpen = ({ color = COLORS.primary }) => (
-  <Svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+  <Svg width="20" height="20" viewBox="0 0 24 24" fill="none">
     <Path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" stroke={color} strokeWidth="1.9" />
     <Circle cx="12" cy="12" r="3" stroke={color} strokeWidth="1.9" />
   </Svg>
 );
 
 const IconEyeClosed = ({ color = COLORS.textMuted }) => (
-  <Svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+  <Svg width="20" height="20" viewBox="0 0 24 24" fill="none">
     <Path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" stroke={color} strokeWidth="1.9" />
     <Path d="M3 3l18 18" stroke={color} strokeWidth="1.9" strokeLinecap="round" />
     <Circle cx="12" cy="12" r="3" stroke={color} strokeWidth="1.9" />
@@ -150,58 +151,175 @@ const IconRefresh = ({ color = COLORS.primary }) => (
   </Svg>
 );
 
+const IconClose = ({ color = COLORS.textSecondary, size = 20 }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Path d="M18 6L6 18M6 6l12 12" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+  </Svg>
+);
+
+const IconFingerprint = ({ color = '#FFFFFF', size = 20 }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Path
+      d="M12 11v3a4 4 0 01-4 4M12 8a4 4 0 014 4v3a6 6 0 01-1 3.3M8 12a4 4 0 014-4 4 4 0 014 4v2M6.5 15.5A6 6 0 0112 6a6 6 0 015.5 3.5M4 13a8 8 0 0116 0v3"
+      stroke={color}
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </Svg>
+);
+
+const IconWarning = ({ color = '#FFFFFF', size = 20 }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Path d="M12 9v4M12 17h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+  </Svg>
+);
+
+const hapticTap = (intensity = 'light') => {
+  if (Platform.OS === 'web') return;
+  try {
+    if (intensity === 'heavy') Vibration.vibrate(20);
+    else if (intensity === 'medium') Vibration.vibrate(12);
+    else Vibration.vibrate(6);
+  } catch (_) {}
+};
+
 // ═══════════════════════════════════════════════════════════════
 // 🏦 ÉCRAN DE RETRAIT
 // ═══════════════════════════════════════════════════════════════
 export default function WithdrawScreen({ navigation }) {
+  const insets = useSafeAreaInsets();
   const { width = 400, height = 800 } = useWindowDimensions();
-  const [amount, setAmount] = useState('');
-  const [selectedDepartement, setSelectedDepartement] = useState(null);
-  const [modalVisible, setModalVisible] = useState(false);
-  const [pin, setPin] = useState('');
-  const [pinVisible, setPinVisible] = useState(false);
-  const [receiptModalVisible, setReceiptModalVisible] = useState(false);
-  const [transactionDetails, setTransactionDetails] = useState(null);
-  const [isExporting, setIsExporting] = useState(false);
-  const [feesIncluded, setFeesIncluded] = useState(true);
-  const [isWithdrawing, setIsWithdrawing] = useState(false);
-  const [isVerifyingAuth, setIsVerifyingAuth] = useState(false);
 
+  // ─── Montant ───────────────────────────────────────────
+  const [amount, setAmount] = useState('');
+  const [amountFocused, setAmountFocused] = useState(false);
+  const amountInputRef = useRef(null);
+
+  // ─── Région ────────────────────────────────────────────
+  const [selectedDepartement, setSelectedDepartement] = useState(null);
   const [departements, setDepartements] = useState([]);
   const [isLoadingDepartements, setIsLoadingDepartements] = useState(true);
   const [departementsError, setDepartementsError] = useState(null);
-
-  const { balance, refreshWallet } = useTransactions();
-
-  const [isBiometricAvailable, setIsBiometricAvailable] = useState(false);
-  const [useBiometric, setUseBiometric] = useState(false);
-
   const [regionModalVisible, setRegionModalVisible] = useState(false);
   const [regionSearch, setRegionSearch] = useState('');
 
+  // ─── Frais ─────────────────────────────────────────────
+  const [feesIncluded, setFeesIncluded] = useState(true);
+
+  // ─── Modal de confirmation ─────────────────────────────
+  const [modalVisible, setModalVisible] = useState(false);
+  const [pin, setPin] = useState('');
+  const [pinVisible, setPinVisible] = useState(false);
+  const [pinRequired, setPinRequired] = useState(false);
+  const pinInputRef = useRef(null);
+
+  // ─── Auth / Envoi ──────────────────────────────────────
+  const [isWithdrawing, setIsWithdrawing] = useState(false);
+  const [isVerifyingAuth, setIsVerifyingAuth] = useState(false);
+  const [isBiometricAvailable, setIsBiometricAvailable] = useState(false);
+  const [useBiometric, setUseBiometric] = useState(false);
+
+  // ─── Reçu ──────────────────────────────────────────────
+  const [receiptModalVisible, setReceiptModalVisible] = useState(false);
+  const [transactionDetails, setTransactionDetails] = useState(null);
+  const [isExporting, setIsExporting] = useState(false);
+
+  // ─── User ──────────────────────────────────────────────
   const [currentUserPhone, setCurrentUserPhone] = useState(null);
   const [currentUserName,  setCurrentUserName]  = useState(null);
 
+  // ─── Toast premium ─────────────────────────────────────
+  const [toast, setToast] = useState(null);
+  const toastAnim = useRef(new Animated.Value(-150)).current;
+
+  // ─── PanResponder pour le sheet de confirmation ────────
+  const sheetTranslateY = useRef(new Animated.Value(0)).current;
+
+  // ─── Animations montant ────────────────────────────────
+  const amountOpacity = useRef(new Animated.Value(1)).current;
+  const caretOpacity = useRef(new Animated.Value(1)).current;
+
+  const { balance, refreshWallet } = useTransactions();
+
   // ═════════════════════════════════════════════════════════
-  // ✅ Chargement RÉEL des départements (API only)
+  // 🎯 TOAST PREMIUM
+  // ═════════════════════════════════════════════════════════
+  const showToast = (type, title, message) => {
+    setToast({ type, title, message: type === 'error' ? humanizeError(message) : message });
+    Animated.spring(toastAnim, {
+      toValue: 1,
+      tension: 65,
+      friction: 9,
+      useNativeDriver: true,
+    }).start();
+
+    setTimeout(() => {
+      Animated.timing(toastAnim, {
+        toValue: -150,
+        duration: 250,
+        useNativeDriver: true,
+      }).start(() => setToast(null));
+    }, 4000);
+  };
+
+  // ─── Montant numérique ─────────────────────────────────
+  const numericAmount = useMemo(() => {
+    const n = parseInt(String(amount || '0').replace(/\D/g, ''), 10);
+    return isNaN(n) ? 0 : n;
+  }, [amount]);
+
+  const displayAmount = useMemo(() => {
+    return numericAmount > 0 ? numericAmount.toLocaleString('fr-FR') : '0';
+  }, [numericAmount]);
+
+  const amountError = useMemo(() => {
+    if (numericAmount === 0) return null;
+    if (numericAmount < 100) return 'Minimum 100 FCFA';
+    if (numericAmount > balance) return 'Solde insuffisant';
+    return null;
+  }, [numericAmount, balance]);
+
+  // Animation du montant
+  useEffect(() => {
+    Animated.sequence([
+      Animated.timing(amountOpacity, { toValue: 0.6, duration: 90, useNativeDriver: true }),
+      Animated.timing(amountOpacity, { toValue: 1, duration: 140, useNativeDriver: true }),
+    ]).start();
+  }, [numericAmount]);
+
+  // Caret clignotant
+  useEffect(() => {
+    if (!amountFocused || numericAmount !== 0) {
+      caretOpacity.setValue(1);
+      return;
+    }
+    const blink = Animated.loop(
+      Animated.sequence([
+        Animated.timing(caretOpacity, { toValue: 0, duration: 500, useNativeDriver: true }),
+        Animated.timing(caretOpacity, { toValue: 1, duration: 500, useNativeDriver: true }),
+      ])
+    );
+    blink.start();
+    return () => blink.stop();
+  }, [amountFocused, numericAmount]);
+
+  // ═════════════════════════════════════════════════════════
+  // ✅ Chargement RÉEL des départements
   // ═════════════════════════════════════════════════════════
   const loadDepartements = useCallback(async () => {
     setIsLoadingDepartements(true);
     setDepartementsError(null);
     try {
-      if (__DEV__) console.log('📡 [Withdraw] Chargement départements (API only)…');
       const data = await API.getDepartements();
       const list = Array.isArray(data) ? data : [];
-
       if (list.length === 0) {
         setDepartements([]);
         setDepartementsError('Aucune région disponible pour le moment.');
       } else {
         setDepartements(list);
-        if (__DEV__) console.log(`✅ [Withdraw] ${list.length} départements chargés`);
       }
     } catch (error) {
-      if (__DEV__) console.error('❌ [Withdraw] Erreur chargement :', error);
       setDepartements([]);
       setDepartementsError(
         error?.message || 'Impossible de charger les régions. Vérifiez votre connexion.'
@@ -213,9 +331,7 @@ export default function WithdrawScreen({ navigation }) {
 
   useEffect(() => { loadDepartements(); }, [loadDepartements]);
 
-  // ═════════════════════════════════════════════════════════
   // Utilisateur connecté
-  // ═════════════════════════════════════════════════════════
   useEffect(() => {
     (async () => {
       try {
@@ -228,9 +344,7 @@ export default function WithdrawScreen({ navigation }) {
     })();
   }, []);
 
-  // ═════════════════════════════════════════════════════════
   // Biométrie
-  // ═════════════════════════════════════════════════════════
   useEffect(() => {
     const checkBiometrics = async () => {
       try {
@@ -254,8 +368,47 @@ export default function WithdrawScreen({ navigation }) {
     checkBiometrics();
   }, []);
 
+  // Auto-focus du montant (si pas de région sélectionnée)
+  const autoFocusDone = useRef(false);
+  useEffect(() => {
+    if (autoFocusDone.current) return;
+    if (isLoadingDepartements) return;
+    if (selectedDepartement) { autoFocusDone.current = true; return; }
+    const t = setTimeout(() => {
+      amountInputRef.current?.focus();
+      autoFocusDone.current = true;
+    }, 500);
+    return () => clearTimeout(t);
+  }, [isLoadingDepartements, selectedDepartement]);
+
   // ═════════════════════════════════════════════════════
-  // 🔐 AUTH BIOMÉTRIQUE
+  // 🎯 PanResponder pour fermer le sheet (swipe down)
+  // ═════════════════════════════════════════════════════
+  const sheetPanResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, g) => g.dy > 8 && Math.abs(g.dy) > Math.abs(g.dx),
+      onPanResponderMove: (_, g) => {
+        if (g.dy > 0) sheetTranslateY.setValue(g.dy);
+      },
+      onPanResponderRelease: (_, g) => {
+        if (g.dy > 120 || g.vy > 0.8) {
+          Animated.timing(sheetTranslateY, {
+            toValue: 800,
+            duration: 200,
+            useNativeDriver: true,
+          }).start(() => {
+            closeConfirmModal();
+            sheetTranslateY.setValue(0);
+          });
+        } else {
+          Animated.spring(sheetTranslateY, { toValue: 0, useNativeDriver: true }).start();
+        }
+      },
+    })
+  ).current;
+
+  // ═════════════════════════════════════════════════════
+  // 🔐 AUTH BIOMÉTRIQUE — fallback auto vers PIN
   // ═════════════════════════════════════════════════════
   const authenticateWithBiometrics = async () => {
     if (isWithdrawing || isVerifyingAuth) return;
@@ -266,10 +419,17 @@ export default function WithdrawScreen({ navigation }) {
     } catch (error) {
       if (error.message === AUTH_CANCELLED) return;
       const msg = String(error.message || '');
-      if (msg.includes('Session biométrique expirée') || msg.includes('Aucune empreinte')) {
+      if (
+        msg.includes('Session biométrique expirée') ||
+        msg.includes('Aucune empreinte') ||
+        msg.includes('non enregistrée')
+      ) {
         setUseBiometric(false);
+        setPinRequired(true);
+        setTimeout(() => pinInputRef.current?.focus(), 150);
+        return;
       }
-      Alert.alert('Authentification refusée', msg || 'Veuillez réessayer.');
+      showToast('error', 'Authentification refusée', msg || 'Veuillez réessayer.');
     } finally {
       setIsVerifyingAuth(false);
     }
@@ -280,17 +440,19 @@ export default function WithdrawScreen({ navigation }) {
   // ═════════════════════════════════════════════════════
   const confirmWithPin = async () => {
     if (isWithdrawing || isVerifyingAuth) return;
-    if (!pin || pin.length < 8 || pin.length > 20) {
-      Alert.alert('Code incorrect', 'Le mot de passe doit contenir entre 8 et 20 caractères.');
+    if (!isValidPin(pin)) {
+      showToast('error', 'Code incorrect', 'Le mot de passe doit contenir entre 8 et 20 caractères avec au moins une lettre et un chiffre.');
       return;
     }
+    hapticTap('medium');
     setIsVerifyingAuth(true);
     try {
       await verifyTransactionAuth(AUTH_METHOD.PIN, pin);
       setPin('');
+      setPinRequired(false);
       await executeWithdraw();
     } catch (error) {
-      Alert.alert('Code incorrect', error.message || 'Le mot de passe saisi est incorrect.');
+      showToast('error', 'Code incorrect', error.message || 'Le mot de passe saisi est incorrect.');
       setPin('');
     } finally {
       setIsVerifyingAuth(false);
@@ -305,12 +467,12 @@ export default function WithdrawScreen({ navigation }) {
 
     const departementId = transactionDetails.departementId;
     if (!departementId) {
-      Alert.alert('Erreur', 'Veuillez sélectionner une région de retrait.');
+      showToast('error', 'Erreur', 'Veuillez sélectionner une région de retrait.');
       return;
     }
 
     const amountValue = Number(amount);
-    setModalVisible(false);
+    closeConfirmModal();
     setIsWithdrawing(true);
 
     try {
@@ -376,10 +538,7 @@ export default function WithdrawScreen({ navigation }) {
         await refreshWallet();
       }
     } catch (error) {
-      Alert.alert(
-        'Échec du retrait',
-        error.message || "Impossible d'effectuer le retrait. Vérifiez votre connexion."
-      );
+      showToast('error', 'Échec du retrait', error.message || "Impossible d'effectuer le retrait.");
     } finally {
       setIsWithdrawing(false);
     }
@@ -425,7 +584,7 @@ export default function WithdrawScreen({ navigation }) {
   const getDisplayFees = () => safeFormatCurrency(feesDisplay.fees);
 
   // ═════════════════════════════════════════════════════════
-  // PDF
+  // PDF / Share (logique métier inchangée)
   // ═════════════════════════════════════════════════════════
   const generatePDFHTML = (details, logoBase64) => {
     const logoHtml = logoBase64
@@ -470,7 +629,7 @@ export default function WithdrawScreen({ navigation }) {
   };
 
   const handleExportPDF = async (details) => {
-    if (!details) { Alert.alert('Erreur', 'Aucune donnée à exporter.'); return; }
+    if (!details) { showToast('error', 'Erreur', 'Aucune donnée à exporter.'); return; }
     try {
       setIsExporting(true);
       const logoBase64 = await getLogoBase64();
@@ -490,10 +649,10 @@ export default function WithdrawScreen({ navigation }) {
           UTI: 'com.adobe.pdf',
         });
       } else {
-        Alert.alert('Reçu généré', 'Votre reçu est prêt.');
+        showToast('success', 'Reçu généré', 'Votre reçu est prêt.');
       }
     } catch (error) {
-      Alert.alert('Erreur', 'Impossible de générer le PDF.\n' + error.message);
+      showToast('error', 'Erreur', 'Impossible de générer le PDF.');
     } finally {
       setIsExporting(false);
     }
@@ -534,31 +693,53 @@ ${details.feesIncluded ? '✅ Frais inclus' : '❌ Hors frais'}
     return `${prefix}${random}${day}${month}${year}`;
   };
 
-  const handleWithdraw = () => {
-    if (!amount || parseInt(amount) <= 0) {
-      Alert.alert('Attention', 'Veuillez saisir un montant valide.');
-      return;
-    }
-    const amountValue = parseInt(amount);
-    const details = calculateTransactionDetails(amountValue, feesIncluded);
+  // ═════════════════════════════════════════════════════════
+  // CONFIRMATION & OUVERTURE DU MODAL
+  // ═════════════════════════════════════════════════════════
+  const closeConfirmModal = () => {
+    setModalVisible(false);
+    setPin('');
+    setPinRequired(false);
+    setUseBiometric(isBiometricAvailable);
+    sheetTranslateY.setValue(0);
+  };
 
-    if (details.debitedAmount > balance) {
-      Alert.alert(
-        'Solde insuffisant',
-        `Total à débiter : ${safeFormatCurrency(details.debitedAmount)} • Solde : ${safeFormatCurrency(balance)}.`
-      );
-      return;
-    }
-    if (!selectedDepartement) {
-      Alert.alert('Attention', 'Veuillez sélectionner une région de retrait.');
-      return;
-    }
+  const canWithdraw =
+    numericAmount >= 100 &&
+    numericAmount <= balance &&
+    !!selectedDepartement &&
+    !isWithdrawing &&
+    !isVerifyingAuth;
 
+  const ctaLabel = (() => {
+    if (!selectedDepartement) return 'Choisir une région';
+    if (numericAmount < 100) return 'Saisir un montant (min. 100 FCFA)';
+    if (numericAmount > balance) return 'Solde insuffisant';
+    return `Retirer ${numericAmount.toLocaleString('fr-FR')} FCFA`;
+  })();
+
+  const ctaHint = (() => {
+    if (canWithdraw) return '';
+    if (!selectedDepartement) return 'Sélectionnez d\'abord une région de retrait';
+    if (numericAmount === 0) return 'Saisissez un montant pour continuer';
+    if (numericAmount < 100) return 'Le montant minimum est de 100 FCFA';
+    if (numericAmount > balance) return 'Solde insuffisant pour ce montant';
+    return '';
+  })();
+
+  const handleConfirm = () => {
+    if (!canWithdraw) return;
+    hapticTap('medium');
+    Keyboard.dismiss();
+
+    // Préparer les détails de la transaction
+    const details = calculateTransactionDetails(numericAmount, feesIncluded);
     const reference = generateReference();
+
     setTransactionDetails({
       region: selectedDepartement.designation,
       departementId: selectedDepartement.id,
-      amount: amountValue,
+      amount: numericAmount,
       fees: details.fees,
       debitedAmount: details.debitedAmount,
       receivedAmount: details.receivedAmount,
@@ -567,24 +748,63 @@ ${details.feesIncluded ? '✅ Frais inclus' : '❌ Hors frais'}
       date: new Date().toLocaleString('fr-FR'),
     });
 
-    setModalVisible(true);
+    // Biométrie prioritaire si activée
     setUseBiometric(isBiometricAvailable);
     setPin('');
+    setPinRequired(!isBiometricAvailable);
+
+    setModalVisible(true);
   };
 
+  // ═════════════════════════════════════════════════════════
+  // 🔐 AUTH CONFIRM (depuis le modal)
+  // ═════════════════════════════════════════════════════════
+  const handleModalConfirm = async () => {
+    if (!canWithdraw) return;
+    hapticTap('medium');
+    Keyboard.dismiss();
+
+    if (isBiometricAvailable && useBiometric && !pinRequired) {
+      setIsVerifyingAuth(true);
+      try {
+        await verifyTransactionAuth(AUTH_METHOD.BIOMETRIC);
+        await executeWithdraw();
+      } catch (error) {
+        if (error.message === AUTH_CANCELLED) return;
+        const msg = String(error.message || '');
+        if (msg.includes('Session biométrique expirée') || msg.includes('Aucune empreinte') || msg.includes('non enregistrée')) {
+          setUseBiometric(false);
+          setPinRequired(true);
+          setTimeout(() => pinInputRef.current?.focus(), 150);
+        } else {
+          showToast('error', 'Authentification refusée', msg || 'Veuillez réessayer.');
+        }
+      } finally {
+        setIsVerifyingAuth(false);
+      }
+      return;
+    }
+
+    setPinRequired(true);
+    setTimeout(() => pinInputRef.current?.focus(), 150);
+  };
+
+  // ══════════════════════════════════════════════════════════════
+  // "✓ Terminé"
+  // ══════════════════════════════════════════════════════════════
   const finishWithdraw = () => {
+    hapticTap('medium');
     Alert.alert('C\'est fait !', `Votre retrait de ${amount} FCFA a été effectué avec succès.`);
     setReceiptModalVisible(false);
     setAmount('');
     setSelectedDepartement(null);
     setTransactionDetails(null);
-    navigation.goBack();
-  };
+    setPinRequired(false);
 
-  const copyReference = () => {
-    if (transactionDetails?.reference) {
-      Alert.alert('Copié', `Référence ${transactionDetails.reference} copiée.`);
-    }
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'Home' }],
+    });
   };
 
   const getConfirmationTotal = () => {
@@ -597,118 +817,72 @@ ${details.feesIncluded ? '✅ Frais inclus' : '❌ Hors frais'}
     return safeFormatCurrency(calculateTransactionDetails(parseInt(amount), feesIncluded).receivedAmount);
   };
 
-  const modalWidth = width ? width - 40 : 320;
   const receiptModalWidth = width ? width - 24 : 340;
   const receiptMaxHeight = height ? Math.min(height * 0.94, height - 40) : 700;
-
-  const hasAmount = !!(amount && parseInt(amount) > 0);
-  const hasRegion = !!selectedDepartement;
-  const canWithdraw = hasAmount && hasRegion && !isWithdrawing;
 
   const filteredDepartements = departements.filter((d) =>
     String(d.designation || '').toLowerCase().includes(regionSearch.toLowerCase().trim())
   );
 
+  // ═════════════════════════════════════════════════════════
+  // RENDER
+  // ═════════════════════════════════════════════════════════
   return (
-    <View style={styles.container}>
-      {/* HEADER */}
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={0}
+    >
+      {/* ═══════════ TOAST PREMIUM ═══════════ */}
+      {toast && (
+        <Animated.View
+          style={[
+            styles.toastContainer,
+            {
+              backgroundColor: toast.type === 'error' ? COLORS.danger : COLORS.primary,
+              transform: [{
+                translateY: toastAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [-150, 0],
+                })
+              }],
+              opacity: toastAnim,
+            }
+          ]}
+        >
+          <View style={styles.toastIconWrap}>
+            <IconWarning color="#FFFFFF" size={20} />
+          </View>
+          <View style={styles.toastContent}>
+            <Text style={styles.toastTitle}>{toast.title}</Text>
+            <Text style={styles.toastMessage}>{toast.message}</Text>
+          </View>
+        </Animated.View>
+      )}
+
+      {/* ═══════════ HEADER (bouton retour) ═══════════ */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton} activeOpacity={0.7}>
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          style={styles.backButton}
+          activeOpacity={0.7}
+        >
           <IconBack />
         </TouchableOpacity>
-        <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle}>Retirer</Text>
-          <Text style={styles.headerSubtitle}>Retrait en agence NT Albey</Text>
-        </View>
-        <View style={{ width: 44 }} />
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-
-        {/* ÉTAPE 1 — MONTANT */}
-        <View style={styles.stepHeaderFirst}>
-          <View style={[styles.stepBadge, { backgroundColor: COLORS.accent }]}>
-            <Text style={styles.stepBadgeText}>1</Text>
-          </View>
-          <Text style={styles.stepTitle}>Quel montant ?</Text>
-        </View>
-
-        <View style={styles.card}>
-          <View style={styles.amountInputContainer}>
-            <TextInput
-              style={styles.amountInput}
-              placeholder="0"
-              placeholderTextColor={COLORS.textMuted}
-              keyboardType="numeric"
-              value={amount}
-              onChangeText={setAmount}
-              editable={!isWithdrawing}
-            />
-            <Text style={styles.currencySymbol}>FCFA</Text>
-          </View>
-
-          <View style={styles.suggestionsRow}>
-            {['5000', '10000', '15000', '25000', '50000', '100000'].map((sug) => (
-              <TouchableOpacity
-                key={sug}
-                style={[styles.suggestionChip, amount === sug && styles.suggestionChipActive]}
-                onPress={() => setAmount(sug)}
-                disabled={isWithdrawing}
-                activeOpacity={0.75}
-              >
-                <Text style={[styles.suggestionText, amount === sug && styles.suggestionTextActive]}>
-                  {parseInt(sug).toLocaleString()}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          <View style={styles.feesSection}>
-            <View style={styles.feesToggleContainer}>
-              <View style={styles.feesToggleLeft}>
-                <View style={[styles.feesToggleIcon, feesIncluded && styles.feesToggleIconActive]}>
-                  <Text style={{ fontSize: 14 }}>{feesIncluded ? '✅' : '❌'}</Text>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.feesToggleTitle}>
-                    {feesIncluded ? 'Frais inclus' : 'Hors frais'}
-                  </Text>
-                  <Text style={styles.feesToggleSubtitle}>
-                    {feesIncluded ? 'Les frais sont ajoutés au total' : 'Les frais sont déduits du montant'}
-                  </Text>
-                </View>
-              </View>
-              <Switch
-                value={feesIncluded}
-                onValueChange={setFeesIncluded}
-                trackColor={{ false: COLORS.border, true: COLORS.primary }}
-                thumbColor="#FFFFFF"
-                disabled={isWithdrawing}
-              />
-            </View>
-
-            <View style={styles.feesDetails}>
-              <View style={styles.feesDetailRow}>
-                <Text style={styles.feesDetailLabel}>{getFeesLabel()}</Text>
-                <Text style={styles.feesDetailFees}>{getDisplayFees()}</Text>
-              </View>
-            </View>
-          </View>
-        </View>
-
-        {/* ÉTAPE 2 — RÉGION */}
-        <View style={styles.stepHeader}>
-          <View style={[styles.stepBadge, { backgroundColor: COLORS.accent }]}>
-            <Text style={styles.stepBadgeText}>2</Text>
-          </View>
-          <Text style={styles.stepTitle}>Où allez-vous retirer ?</Text>
-        </View>
+      {/* ═══════════ CONTENU ═══════════ */}
+      <ScrollView
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: 120 + insets.bottom }]}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        <Text style={styles.label}>Région de retrait</Text>
 
         <TouchableOpacity
           style={[
-            styles.selectContainer,
-            selectedDepartement && styles.selectContainerFilled,
-            (departementsError || isLoadingDepartements) && styles.selectContainerDisabled,
+            styles.beneficiaryButton,
+            selectedDepartement && styles.beneficiaryButtonFilled,
           ]}
           onPress={() => {
             if (isLoadingDepartements) return;
@@ -719,87 +893,281 @@ ${details.feesIncluded ? '✅ Frais inclus' : '❌ Hors frais'}
             setRegionSearch('');
             setRegionModalVisible(true);
           }}
-          activeOpacity={0.75}
+          activeOpacity={0.7}
           disabled={isWithdrawing}
         >
-          <View style={styles.selectIconWrap}>
-            <IconLocation color={selectedDepartement ? '#FFFFFF' : COLORS.accent} />
-          </View>
-          <View style={styles.selectContent}>
-            <Text style={[styles.selectText, selectedDepartement && styles.selectTextSelected]}>
-              {isLoadingDepartements
-                ? 'Chargement des régions…'
-                : departementsError
-                  ? 'Régions indisponibles'
-                  : (selectedDepartement?.designation || 'Sélectionnez une localité')}
-            </Text>
-            {!selectedDepartement && !isLoadingDepartements && !departementsError && (
-              <Text style={styles.selectSubtext}>Appuyez pour choisir votre région de retrait</Text>
-            )}
-            {selectedDepartement && (
-              <Text style={styles.selectSubtext}>
-                Vous pourrez retirer dans n'importe quelle agence de cette région
-              </Text>
-            )}
-            {departementsError && !isLoadingDepartements && (
-              <Text style={[styles.selectSubtext, { color: COLORS.danger }]}>
-                {departementsError} — Tapez pour réessayer
-              </Text>
-            )}
-          </View>
-          {isLoadingDepartements ? (
-            <ActivityIndicator size="small" color={COLORS.accent} />
-          ) : departementsError ? (
-            <IconRefresh color={COLORS.accent} />
+          {selectedDepartement ? (
+            <>
+              <View style={[styles.beneficiaryAvatar, { backgroundColor: COLORS.accent }]}>
+                <IconLocation color="#FFFFFF" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.beneficiaryName} numberOfLines={1}>
+                  {selectedDepartement.designation}
+                </Text>
+                <Text style={styles.beneficiaryPhone}>
+                  Guichet NT Albey
+                </Text>
+              </View>
+              <IconArrowRight color={COLORS.accent} size={16} />
+            </>
           ) : (
-            <IconChevronDown color={selectedDepartement ? COLORS.accent : COLORS.textMuted} />
+            <>
+              <View style={styles.beneficiaryEmptyIcon}>
+                <IconLocation color={COLORS.accent} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.beneficiaryEmptyText}>
+                  {isLoadingDepartements
+                    ? 'Chargement des régions…'
+                    : departementsError
+                      ? 'Régions indisponibles'
+                      : 'Choisir une région'}
+                </Text>
+                {departementsError && !isLoadingDepartements && (
+                  <Text style={{ fontSize: 11, color: COLORS.danger, marginTop: 2, fontWeight: '500' }}>
+                    Tapez pour réessayer
+                  </Text>
+                )}
+              </View>
+              {isLoadingDepartements ? (
+                <ActivityIndicator size="small" color={COLORS.accent} />
+              ) : departementsError ? (
+                <IconRefresh color={COLORS.accent} />
+              ) : (
+                <IconArrowRight color={COLORS.accent} size={16} />
+              )}
+            </>
           )}
         </TouchableOpacity>
 
-        {/* BOUTON RETIRER */}
+        <Text style={[styles.label, { marginTop: 40 }]}>Montant</Text>
+
         <TouchableOpacity
-          style={[styles.withdrawButton, !canWithdraw && styles.withdrawButtonDisabled]}
-          onPress={handleWithdraw}
-          disabled={!canWithdraw}
-          activeOpacity={0.85}
+          style={[
+            styles.amountWrapper,
+            amountFocused && styles.amountWrapperFocused,
+            amountError && styles.amountWrapperError,
+          ]}
+          activeOpacity={0.9}
+          onPress={() => amountInputRef.current?.focus()}
         >
-          {isWithdrawing ? (
-            <View style={styles.withdrawButtonContent}>
-              <ActivityIndicator color="#FFFFFF" size="small" />
-              <Text style={styles.withdrawButtonText}>Retrait en cours…</Text>
-            </View>
-          ) : (
-            <View style={styles.withdrawButtonContent}>
-              <Text style={[styles.withdrawButtonText, !canWithdraw && styles.withdrawButtonTextDisabled]}>
-                {amount ? `Retirer ${parseInt(amount).toLocaleString()} FCFA` : 'Retirer'}
-              </Text>
-              {canWithdraw && <View style={styles.withdrawIconCircle}><IconArrowDown /></View>}
+          {numericAmount === 0 && !amountFocused && (
+            <View style={styles.keyboardHintRow}>
+              <Text style={styles.keyboardHintIcon}>⌨️</Text>
+              <Text style={styles.keyboardHintLabel}>Touchez pour saisir</Text>
             </View>
           )}
+
+          {numericAmount === 0 ? (
+            <Text style={styles.amountEmptyState}>Combien ?</Text>
+          ) : (
+            <Animated.Text
+              style={[
+                styles.amountText,
+                amountError && styles.amountTextError,
+                { opacity: amountOpacity },
+              ]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+            >
+              {displayAmount}
+            </Animated.Text>
+          )}
+
+          <Text style={styles.amountCurrency}>FCFA</Text>
+
+          {amountFocused && numericAmount === 0 && (
+            <Animated.View style={[styles.customCaret, { opacity: caretOpacity }]} />
+          )}
+
+          <TextInput
+            ref={amountInputRef}
+            style={styles.amountHiddenInput}
+            value={amount}
+            onChangeText={(v) => {
+              const digits = v.replace(/[^\d]/g, '');
+              setAmount(digits);
+            }}
+            onFocus={() => setAmountFocused(true)}
+            onBlur={() => setAmountFocused(false)}
+            keyboardType="numeric"
+            maxLength={9}
+            caretHidden={true}
+            editable={!isWithdrawing}
+            showSoftInputOnFocus={true}
+            selectionColor={COLORS.primary}
+          />
         </TouchableOpacity>
 
+        {amountError && (
+          <View style={styles.amountErrorRow}>
+            <Text style={styles.amountErrorText}>⚠️ {amountError}</Text>
+          </View>
+        )}
+
+        {!amountError && (
+          <Text style={styles.balanceHint}>
+            Solde disponible · {balance.toLocaleString('fr-FR')} FCFA
+          </Text>
+        )}
+
+        {/* Suggestions rapides */}
+        <View style={styles.suggestionsRow}>
+          {['5000', '10000', '15000', '25000', '50000', '100000'].map((sug) => (
+            <TouchableOpacity
+              key={sug}
+              style={[styles.suggestionChip, amount === sug && styles.suggestionChipActive]}
+              onPress={() => {
+                hapticTap('light');
+                setAmount(sug);
+              }}
+              disabled={isWithdrawing}
+              activeOpacity={0.75}
+            >
+              <Text style={[styles.suggestionText, amount === sug && styles.suggestionTextActive]}>
+                {parseInt(sug).toLocaleString()}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* PIN inline (fallback biométrie) */}
+        {pinRequired && (
+          <View style={styles.pinInline}>
+            <View style={styles.pinInlineHeader}>
+              <Text style={styles.pinInlineLabel}>Confirmez avec votre mot de passe</Text>
+              <Text style={styles.pinInlineCounter}>{pin.length}/20</Text>
+            </View>
+            <View style={styles.pinInlineRow}>
+              <TextInput
+                ref={pinInputRef}
+                style={styles.pinInlineInput}
+                placeholder="••••••••"
+                placeholderTextColor={COLORS.textMuted}
+                secureTextEntry={!pinVisible}
+                autoCapitalize="none"
+                autoCorrect={false}
+                maxLength={20}
+                value={pin}
+                onChangeText={setPin}
+                editable={!isVerifyingAuth && !isWithdrawing}
+                textAlign="center"
+              />
+              <TouchableOpacity
+                style={styles.pinInlineEye}
+                onPress={() => setPinVisible(v => !v)}
+                activeOpacity={0.7}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                {pinVisible ? <IconEyeOpen /> : <IconEyeClosed />}
+              </TouchableOpacity>
+            </View>
+            <View style={styles.pinInlineActions}>
+              <TouchableOpacity
+                style={styles.pinInlineCancel}
+                onPress={() => {
+                  setPinRequired(false);
+                  setPin('');
+                  Keyboard.dismiss();
+                }}
+                disabled={isVerifyingAuth || isWithdrawing}
+                activeOpacity={0.75}
+              >
+                <Text style={styles.pinInlineCancelText}>Annuler</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.pinInlineConfirm,
+                  (!pin || pin.length < 8 || isVerifyingAuth || isWithdrawing) && styles.pinInlineConfirmDisabled,
+                ]}
+                onPress={confirmWithPin}
+                disabled={!pin || pin.length < 8 || isVerifyingAuth || isWithdrawing}
+                activeOpacity={0.85}
+              >
+                {isVerifyingAuth || isWithdrawing ? (
+                  <ActivityIndicator color="#FFFFFF" size="small" />
+                ) : (
+                  <Text style={styles.pinInlineConfirmText}>Confirmer</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
       </ScrollView>
 
-      {/* MODAL SÉLECTION RÉGION */}
-      <Modal
-        animationType="slide"
-        transparent={true}
-        visible={regionModalVisible}
-        onRequestClose={() => setRegionModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.regionModalContent, { width: modalWidth, maxHeight: height * 0.8 }]}>
-            <View style={styles.modalDragHandle} />
+      {/* ═══════════ CTA FIXE EN BAS ═══════════ */}
+      {!pinRequired && (
+        <View style={[styles.ctaContainer, { paddingBottom: Math.max(insets.bottom, 14) + 12 }]}>
+          <TouchableOpacity
+            style={[styles.cta, !canWithdraw && styles.ctaDisabled]}
+            onPress={handleConfirm}
+            disabled={!canWithdraw}
+            activeOpacity={0.85}
+          >
+            {isWithdrawing || isVerifyingAuth ? (
+              <View style={styles.ctaContent}>
+                <ActivityIndicator color="#FFFFFF" size="small" />
+                <Text style={styles.ctaText}>
+                  {isWithdrawing ? 'Retrait en cours…' : 'Vérification…'}
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.ctaContent}>
+                {isBiometricAvailable && useBiometric && canWithdraw && (
+                  <IconFingerprint color="#FFFFFF" size={20} />
+                )}
+                <Text style={[styles.ctaText, !canWithdraw && styles.ctaTextDisabled]}>
+                  {ctaLabel}
+                </Text>
+              </View>
+            )}
+          </TouchableOpacity>
 
-            <View style={styles.regionModalHeader}>
-              <Text style={styles.regionModalTitle}>Choisir une région</Text>
-              <Text style={styles.regionModalSubtitle}>
-                {filteredDepartements.length} région{filteredDepartements.length > 1 ? 's' : ''} disponible{filteredDepartements.length > 1 ? 's' : ''}
-              </Text>
+          {ctaHint ? (
+            <Text style={styles.ctaHintText}>{ctaHint}</Text>
+          ) : null}
+        </View>
+      )}
+
+      {/* ═══════════════════════════════════════════════════
+          MODAL SÉLECTION RÉGION (bottom sheet)
+          ═══════════════════════════════════════════════════ */}
+      <Modal
+        visible={regionModalVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => { setRegionModalVisible(false); setRegionSearch(''); }}
+      >
+        <View style={styles.sheetOverlay}>
+          <TouchableOpacity
+            style={styles.sheetBackdrop}
+            onPress={() => { setRegionModalVisible(false); setRegionSearch(''); }}
+            activeOpacity={1}
+          />
+          <View style={[styles.sheetContent, { maxHeight: height * 0.85 }]}>
+            <View style={styles.sheetHandle} />
+
+            <View style={styles.sheetHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.sheetTitle}>Choisir une région</Text>
+                <Text style={styles.sheetSubtitle}>
+                  {filteredDepartements.length} région{filteredDepartements.length > 1 ? 's' : ''} disponible{filteredDepartements.length > 1 ? 's' : ''}
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => { setRegionModalVisible(false); setRegionSearch(''); }}
+                style={styles.sheetCloseBtn}
+                activeOpacity={0.7}
+              >
+                <IconClose />
+              </TouchableOpacity>
             </View>
 
-            <View style={styles.searchWrapper}>
-              <IconSearch />
+            <View style={styles.searchInputRow}>
+              <View style={styles.searchIconWrap}>
+                <IconSearch />
+              </View>
               <TextInput
                 style={styles.searchInput}
                 placeholder="Rechercher une région…"
@@ -816,14 +1184,16 @@ ${details.feesIncluded ? '✅ Frais inclus' : '❌ Hors frais'}
             </View>
 
             {isLoadingDepartements ? (
-              <View style={styles.regionLoading}>
+              <View style={styles.sheetLoading}>
                 <ActivityIndicator size="large" color={COLORS.accent} />
-                <Text style={styles.regionLoadingText}>Chargement des régions…</Text>
+                <Text style={{ marginTop: 12, color: COLORS.textSecondary, fontSize: 13, fontWeight: '500' }}>
+                  Chargement des régions…
+                </Text>
               </View>
             ) : departementsError ? (
-              <View style={styles.regionEmpty}>
-                <Text style={styles.regionEmptyEmoji}>⚠️</Text>
-                <Text style={styles.regionEmptyText}>{departementsError}</Text>
+              <View style={styles.sheetEmpty}>
+                <Text style={styles.sheetEmptyEmoji}>⚠️</Text>
+                <Text style={styles.sheetEmptyTitle}>{departementsError}</Text>
                 <TouchableOpacity
                   style={styles.retryButton}
                   onPress={loadDepartements}
@@ -834,245 +1204,271 @@ ${details.feesIncluded ? '✅ Frais inclus' : '❌ Hors frais'}
                 </TouchableOpacity>
               </View>
             ) : filteredDepartements.length === 0 ? (
-              <View style={styles.regionEmpty}>
-                <Text style={styles.regionEmptyEmoji}>📍</Text>
-                <Text style={styles.regionEmptyText}>Aucune région trouvée</Text>
+              <View style={styles.sheetEmpty}>
+                <Text style={styles.sheetEmptyEmoji}>📍</Text>
+                <Text style={styles.sheetEmptyTitle}>Aucune région trouvée</Text>
               </View>
             ) : (
               <FlatList
                 data={filteredDepartements}
                 keyExtractor={(item) => String(item.id)}
                 showsVerticalScrollIndicator={false}
-                contentContainerStyle={{ paddingBottom: 8 }}
+                contentContainerStyle={{ paddingBottom: 20 }}
                 keyboardShouldPersistTaps="handled"
                 renderItem={({ item }) => {
                   const isSelected = selectedDepartement?.id === item.id;
                   return (
                     <TouchableOpacity
-                      style={[styles.regionItem, isSelected && styles.regionItemSelected]}
+                      style={styles.contactRow}
                       onPress={() => {
+                        hapticTap('light');
                         setSelectedDepartement(item);
                         setRegionModalVisible(false);
                         setRegionSearch('');
                       }}
                       activeOpacity={0.7}
                     >
-                      <View style={[styles.regionItemIcon, isSelected && styles.regionItemIconSelected]}>
+                      <View style={[
+                        styles.contactRowAvatar,
+                        { backgroundColor: isSelected ? COLORS.accent : COLORS.accentSoft },
+                      ]}>
                         <IconLocation color={isSelected ? '#FFFFFF' : COLORS.accent} />
                       </View>
-                      <Text style={[styles.regionItemText, isSelected && styles.regionItemTextSelected]}>
-                        {item.designation}
-                      </Text>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[
+                          styles.contactRowName,
+                          isSelected && { color: COLORS.accent, fontWeight: '800' },
+                        ]} numberOfLines={1}>
+                          {item.designation}
+                        </Text>
+                        <Text style={styles.contactRowPhone}>
+                          Guichet NT Albey
+                        </Text>
+                      </View>
                       {isSelected && (
-                        <View style={styles.regionItemCheck}><IconCheckSmall /></View>
+                        <View style={styles.contactRowCheck}>
+                          <IconCheckSmall />
+                        </View>
                       )}
                     </TouchableOpacity>
                   );
                 }}
               />
             )}
-
-            <TouchableOpacity
-              style={styles.regionCloseButton}
-              onPress={() => { setRegionModalVisible(false); setRegionSearch(''); }}
-              activeOpacity={0.75}
-            >
-              <Text style={styles.regionCloseButtonText}>Fermer</Text>
-            </TouchableOpacity>
           </View>
         </View>
       </Modal>
 
-      {/* MODAL CONFIRMATION */}
+      {/* ═══════════════════════════════════════════════════
+          MODAL CONFIRMATION (bottom sheet)
+          ═══════════════════════════════════════════════════ */}
       <Modal
-        animationType="slide"
-        transparent={true}
         visible={modalVisible}
+        animationType="slide"
+        transparent
         onRequestClose={() => {
           if (isWithdrawing || isVerifyingAuth) return;
-          setModalVisible(false);
-          setPin('');
-          setUseBiometric(isBiometricAvailable);
+          closeConfirmModal();
         }}
       >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.confirmModalContent, { width: modalWidth }]}>
-            <View style={styles.confirmIconWrapper}>
-              <Svg width="60" height="60" viewBox="0 0 100 100" fill="none">
-                <Circle cx="50" cy="50" r="45" fill={COLORS.accentSoft} />
-                <Path d="M50 25 L50 65" stroke={COLORS.accent} strokeWidth="4.5" strokeLinecap="round" />
-                <Path d="M35 50 L50 65 L65 50" stroke={COLORS.accent} strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-                <Rect x="35" y="68" width="30" height="6" rx="2" fill={COLORS.accent} />
-              </Svg>
-            </View>
+        <View style={styles.sheetOverlay}>
+          <TouchableOpacity
+            style={styles.sheetBackdrop}
+            onPress={() => {
+              if (isWithdrawing || isVerifyingAuth) return;
+              closeConfirmModal();
+            }}
+            activeOpacity={1}
+          />
+          <Animated.View
+            style={[
+              styles.confirmSheetContent,
+              { maxHeight: height * 0.9, transform: [{ translateY: sheetTranslateY }] },
+            ]}
+            {...sheetPanResponder.panHandlers}
+          >
+            <View style={styles.sheetHandle} />
 
-            <Text style={styles.confirmTitle}>Confirmer le retrait</Text>
-            <Text style={styles.confirmAmount}>{amount} FCFA</Text>
-            <Text style={styles.confirmRecipient}>
-              Région : {selectedDepartement?.designation || '—'}
-            </Text>
-
-            <View style={styles.confirmInfoBox}>
-              <View style={styles.confirmInfoRow}>
-                <Text style={styles.confirmInfoLabel}>Frais</Text>
-                <Text style={styles.confirmInfoValue}>{getDisplayFees()}</Text>
-              </View>
-              <View style={styles.confirmInfoRow}>
-                <Text style={styles.confirmInfoLabel}>Barème</Text>
-                <Text style={styles.confirmInfoValue}>{getFeesLabel()}</Text>
-              </View>
-              <View style={styles.confirmInfoRow}>
-                <Text style={styles.confirmInfoLabel}>Option</Text>
-                <Text style={styles.confirmInfoValue}>
-                  {feesIncluded ? 'Frais inclus' : 'Hors frais'}
-                </Text>
-              </View>
-              <View style={styles.confirmInfoDivider} />
-              <View style={styles.confirmInfoRow}>
-                <Text style={styles.confirmInfoLabelTotal}>💳 Total débité</Text>
-                <Text style={styles.confirmInfoValueTotal}>{getConfirmationTotal()}</Text>
-              </View>
-              <View style={styles.confirmInfoRow}>
-                <Text style={styles.confirmInfoLabelReceived}>📥 Net reçu</Text>
-                <Text style={styles.confirmInfoValueReceived}>{getConfirmationReceived()}</Text>
-              </View>
-            </View>
-
-            {isBiometricAvailable && useBiometric ? (
-              <>
-                <Text style={styles.confirmHintText}>Confirmez avec votre empreinte</Text>
-                <TouchableOpacity
-                  style={styles.biometricButton}
-                  onPress={authenticateWithBiometrics}
-                  activeOpacity={0.75}
-                  disabled={isWithdrawing || isVerifyingAuth}
-                >
-                  {isWithdrawing || isVerifyingAuth ? (
-                    <ActivityIndicator color={COLORS.accent} size="small" />
-                  ) : (
-                    <Image source={require('../assets/images/print.png')} style={styles.biometricIcon} />
-                  )}
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.confirmButtonFull, (isWithdrawing || isVerifyingAuth) && styles.confirmButtonDisabled]}
-                  onPress={authenticateWithBiometrics}
-                  disabled={isWithdrawing || isVerifyingAuth}
-                  activeOpacity={0.85}
-                >
-                  {isWithdrawing || isVerifyingAuth ? (
-                    <ActivityIndicator color="#FFFFFF" size="small" />
-                  ) : (
-                    <Text style={styles.confirmButtonText}>Confirmer</Text>
-                  )}
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.switchMethodButton}
-                  onPress={() => setUseBiometric(false)}
-                  disabled={isWithdrawing || isVerifyingAuth}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.switchMethodText}>🔑 Utiliser mon mot de passe</Text>
-                </TouchableOpacity>
-              </>
-            ) : (
-              <>
-                <Text style={styles.confirmHintText}>Entrez votre mot de passe (8 à 20 caractères)</Text>
-                <View style={styles.pinInputWrapper}>
-                  <TextInput
-                    style={styles.pinInput}
-                    placeholder="••••••••"
-                    placeholderTextColor={COLORS.textMuted}
-                    keyboardType="default"
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    secureTextEntry={!pinVisible}
-                    maxLength={20}
-                    value={pin}
-                    onChangeText={setPin}
-                    textAlign="center"
-                    editable={!isWithdrawing && !isVerifyingAuth}
-                  />
-                  <TouchableOpacity
-                    style={styles.pinEyeButton}
-                    onPress={() => setPinVisible((v) => !v)}
-                    disabled={isWithdrawing || isVerifyingAuth}
-                    activeOpacity={0.7}
-                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                  >
-                    {pinVisible ? <IconEyeOpen /> : <IconEyeClosed />}
-                  </TouchableOpacity>
-                </View>
-
-                <TouchableOpacity
-                  style={styles.pinToggleLabelWrapper}
-                  onPress={() => setPinVisible((v) => !v)}
-                  disabled={isWithdrawing || isVerifyingAuth}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.pinToggleLabelText}>
-                    {pinVisible ? 'Masquer' : 'Afficher'} le mot de passe
-                  </Text>
-                </TouchableOpacity>
-
-                {isBiometricAvailable && (
-                  <TouchableOpacity
-                    style={styles.switchMethodButton}
-                    onPress={() => setUseBiometric(true)}
-                    disabled={isWithdrawing || isVerifyingAuth}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={styles.switchMethodText}>👆 Utiliser mon empreinte</Text>
-                  </TouchableOpacity>
-                )}
-
-                <TouchableOpacity
-                  style={[styles.confirmButtonFull, (isWithdrawing || isVerifyingAuth) && styles.confirmButtonDisabled]}
-                  onPress={confirmWithPin}
-                  disabled={isWithdrawing || isVerifyingAuth}
-                  activeOpacity={0.85}
-                >
-                  {isWithdrawing || isVerifyingAuth ? (
-                    <ActivityIndicator color="#FFFFFF" size="small" />
-                  ) : (
-                    <Text style={styles.confirmButtonText}>Confirmer</Text>
-                  )}
-                </TouchableOpacity>
-              </>
-            )}
-
-            <View style={styles.modalButtons}>
+            <View style={styles.confirmHeader}>
+              <Text style={styles.confirmTitle}>Confirmer le retrait</Text>
               <TouchableOpacity
-                style={[styles.modalButton, styles.cancelButton]}
                 onPress={() => {
-                  setModalVisible(false);
-                  setPin('');
-                  setUseBiometric(isBiometricAvailable);
+                  if (isWithdrawing || isVerifyingAuth) return;
+                  closeConfirmModal();
                 }}
-                disabled={isWithdrawing || isVerifyingAuth}
-                activeOpacity={0.75}
+                style={styles.sheetCloseBtn}
+                activeOpacity={0.7}
               >
-                <Text style={styles.cancelButtonText}>
-                  {isWithdrawing ? 'Retrait en cours…' : 'Annuler'}
-                </Text>
+                <IconClose />
               </TouchableOpacity>
             </View>
-          </View>
+
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={{ paddingBottom: 20 }}
+            >
+              <Text style={styles.confirmAmount}>{numericAmount.toLocaleString('fr-FR')} FCFA</Text>
+              <Text style={styles.confirmRecipient}>
+                Région : {selectedDepartement?.designation || '—'}
+              </Text>
+
+              {/* Section FRAIS */}
+              <View style={styles.feesSection}>
+                <View style={styles.feesToggleContainer}>
+                  <View style={styles.feesToggleLeft}>
+                    <View style={[styles.feesToggleIcon, feesIncluded && styles.feesToggleIconActive]}>
+                      <Text style={{ fontSize: 14 }}>{feesIncluded ? '✅' : '❌'}</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.feesToggleTitle}>
+                        {feesIncluded ? 'Frais inclus' : 'Hors frais'}
+                      </Text>
+                      <Text style={styles.feesToggleSubtitle}>
+                        {feesIncluded ? 'Les frais sont ajoutés au total' : 'Les frais sont déduits du montant'}
+                      </Text>
+                    </View>
+                  </View>
+                  <Switch
+                    value={feesIncluded}
+                    onValueChange={setFeesIncluded}
+                    trackColor={{ false: COLORS.border, true: COLORS.primary }}
+                    thumbColor="#FFFFFF"
+                    disabled={isWithdrawing || isVerifyingAuth}
+                  />
+                </View>
+
+                <View style={styles.feesDetails}>
+                  <View style={styles.feesDetailRow}>
+                    <Text style={styles.feesDetailLabel}>{getFeesLabel()}</Text>
+                    <Text style={styles.feesDetailFees}>{getDisplayFees()}</Text>
+                  </View>
+                  <View style={styles.feesDetailDivider} />
+                  <View style={styles.feesDetailRow}>
+                    <Text style={styles.feesDetailLabelTotal}>💳 Total débité</Text>
+                    <Text style={styles.feesDetailValueTotal}>{getConfirmationTotal()}</Text>
+                  </View>
+                  <View style={styles.feesDetailRow}>
+                    <Text style={styles.feesDetailLabelReceived}>📥 Net reçu</Text>
+                    <Text style={styles.feesDetailValueReceived}>{getConfirmationReceived()}</Text>
+                  </View>
+                </View>
+              </View>
+
+              {/* PIN inline dans le modal */}
+              {pinRequired && (
+                <View style={styles.pinInline}>
+                  <View style={styles.pinInlineHeader}>
+                    <Text style={styles.pinInlineLabel}>
+                      {isBiometricAvailable && pinRequired
+                        ? 'Empreinte indisponible — entrez votre mot de passe'
+                        : 'Confirmez avec votre mot de passe'}
+                    </Text>
+                    <Text style={styles.pinInlineCounter}>{pin.length}/20</Text>
+                  </View>
+                  <View style={styles.pinInlineRow}>
+                    <TextInput
+                      ref={pinInputRef}
+                      style={styles.pinInlineInput}
+                      placeholder="••••••••"
+                      placeholderTextColor={COLORS.textMuted}
+                      secureTextEntry={!pinVisible}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      maxLength={20}
+                      value={pin}
+                      onChangeText={setPin}
+                      editable={!isVerifyingAuth && !isWithdrawing}
+                      textAlign="center"
+                    />
+                    <TouchableOpacity
+                      style={styles.pinInlineEye}
+                      onPress={() => setPinVisible(v => !v)}
+                      activeOpacity={0.7}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    >
+                      {pinVisible ? <IconEyeOpen /> : <IconEyeClosed />}
+                    </TouchableOpacity>
+                  </View>
+                  <View style={styles.pinInlineActions}>
+                    <TouchableOpacity
+                      style={styles.pinInlineCancel}
+                      onPress={() => {
+                        setPinRequired(false);
+                        setPin('');
+                        Keyboard.dismiss();
+                      }}
+                      disabled={isVerifyingAuth || isWithdrawing}
+                      activeOpacity={0.75}
+                    >
+                      <Text style={styles.pinInlineCancelText}>Annuler</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[
+                        styles.pinInlineConfirm,
+                        (!pin || pin.length < 8 || isVerifyingAuth || isWithdrawing) && styles.pinInlineConfirmDisabled,
+                      ]}
+                      onPress={confirmWithPin}
+                      disabled={!pin || pin.length < 8 || isVerifyingAuth || isWithdrawing}
+                      activeOpacity={0.85}
+                    >
+                      {isVerifyingAuth || isWithdrawing ? (
+                        <ActivityIndicator color="#FFFFFF" size="small" />
+                      ) : (
+                        <Text style={styles.pinInlineConfirmText}>Confirmer</Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+
+              {!pinRequired && (
+                <TouchableOpacity
+                  style={[
+                    styles.confirmButton,
+                    (isWithdrawing || isVerifyingAuth) && styles.confirmButtonDisabled,
+                  ]}
+                  onPress={handleModalConfirm}
+                  disabled={isWithdrawing || isVerifyingAuth}
+                  activeOpacity={0.85}
+                >
+                  {isWithdrawing || isVerifyingAuth ? (
+                    <ActivityIndicator color="#FFFFFF" size="small" />
+                  ) : (
+                    <View style={styles.confirmButtonContent}>
+                      {isBiometricAvailable && useBiometric && (
+                        <IconFingerprint color="#FFFFFF" size={20} />
+                      )}
+                      <Text style={styles.confirmButtonText}>Confirmer</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              )}
+            </ScrollView>
+          </Animated.View>
         </View>
       </Modal>
 
-      {/* MODAL REÇU */}
+      {/* ═══════════════════════════════════════════════════
+          MODAL REÇU
+          ═══════════════════════════════════════════════════ */}
       <Modal
         animationType="slide"
-        transparent={true}
+        transparent
         visible={receiptModalVisible}
         onRequestClose={() => setReceiptModalVisible(false)}
       >
         <View style={styles.receiptOverlay}>
-          <View style={[styles.receiptModalContent, { width: receiptModalWidth, maxHeight: receiptMaxHeight }]}>
+          <View
+            style={[
+              styles.receiptModalContent,
+              { width: receiptModalWidth, maxHeight: receiptMaxHeight },
+            ]}
+          >
             <View style={styles.receiptHeader}>
-              <View style={styles.receiptIcon}><Text style={styles.receiptIconText}>✅</Text></View>
+              <View style={styles.receiptIcon}>
+                <Text style={styles.receiptIconText}>✅</Text>
+              </View>
               <Text style={styles.receiptTitle}>Retrait confirmé</Text>
               <Text style={styles.receiptSubtitle}>Transaction effectuée avec succès</Text>
             </View>
@@ -1142,10 +1538,15 @@ ${details.feesIncluded ? '✅ Frais inclus' : '❌ Hors frais'}
                       <Text style={styles.receiptCodeLabel}>RÉFÉRENCE</Text>
                     </View>
                     <Text style={styles.receiptCode}>{transactionDetails.reference}</Text>
-                    <TouchableOpacity style={styles.receiptCodeCopy} onPress={copyReference} activeOpacity={0.75}>
-                      <IconCopy color={COLORS.accent} />
-                      <Text style={styles.receiptCodeCopyText}>Copier la référence</Text>
-                    </TouchableOpacity>
+                    {transactionDetails.backendId && (
+                      <>
+                        <View style={styles.receiptUuidSeparator} />
+                        <Text style={styles.receiptUuidLabel}>🆔 ID TECHNIQUE</Text>
+                        <Text style={styles.receiptUuidValue} numberOfLines={2} ellipsizeMode="middle">
+                          {transactionDetails.backendId}
+                        </Text>
+                      </>
+                    )}
                   </View>
 
                   <Text style={styles.receiptDate}>📅 {transactionDetails.date}</Text>
@@ -1181,14 +1582,18 @@ ${details.feesIncluded ? '✅ Frais inclus' : '❌ Hors frais'}
                 </TouchableOpacity>
               </View>
 
-              <TouchableOpacity style={styles.receiptDoneButton} onPress={finishWithdraw} activeOpacity={0.85}>
+              <TouchableOpacity
+                style={styles.receiptDoneButton}
+                onPress={finishWithdraw}
+                activeOpacity={0.85}
+              >
                 <Text style={styles.receiptDoneButtonText}>✓ Terminé</Text>
               </TouchableOpacity>
             </View>
           </View>
         </View>
       </Modal>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -1197,141 +1602,493 @@ ${details.feesIncluded ? '✅ Frais inclus' : '❌ Hors frais'}
 // ═══════════════════════════════════════════════════════════════
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
-  scrollContent: { paddingBottom: 40, paddingTop: 16 },
 
+  // ═══════════ TOAST PREMIUM ═══════════
+  toastContainer: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? 60 : 40,
+    left: 20,
+    right: 20,
+    borderRadius: 16,
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    zIndex: 9999,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    elevation: 10,
+  },
+  toastIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  toastContent: { flex: 1 },
+  toastTitle: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '800',
+    marginBottom: 2,
+    letterSpacing: -0.2,
+  },
+  toastMessage: {
+    color: 'rgba(255,255,255,0.9)',
+    fontSize: 13,
+    fontWeight: '500',
+    lineHeight: 18,
+  },
+
+  // Header
   header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 16, paddingTop: 52, paddingBottom: 16,
-    backgroundColor: COLORS.surface,
-    borderBottomWidth: 1, borderBottomColor: COLORS.borderSoft,
-    ...Platform.select({
-      ios: { shadowColor: COLORS.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 8 },
-      android: { elevation: 2 },
-    }),
-  },
-  backButton: {
-    width: 44, height: 44, borderRadius: 14,
-    backgroundColor: COLORS.surfaceAlt, alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1, borderColor: COLORS.borderSoft,
-  },
-  headerCenter: { alignItems: 'center', flex: 1 },
-  headerTitle: { fontSize: 18, fontWeight: '800', color: COLORS.textPrimary, letterSpacing: -0.3 },
-  headerSubtitle: { fontSize: 11, color: COLORS.textMuted, marginTop: 2, fontWeight: '500' },
-
-  // Étape 1 : premier bloc collé au header (paddingTop déjà sur scrollContent)
-  stepHeaderFirst: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, marginTop: 4, marginBottom: 10, gap: 10 },
-  stepHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, marginTop: 24, marginBottom: 10, gap: 10 },
-  stepBadge: { width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
-  stepBadgeText: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
-  stepTitle: { fontSize: 15, fontWeight: '800', color: COLORS.textPrimary, letterSpacing: -0.2 },
-
-  card: {
-    backgroundColor: COLORS.surface, marginHorizontal: 16, borderRadius: 20, padding: 18,
-    borderWidth: 1, borderColor: COLORS.borderSoft,
-    ...Platform.select({
-      ios: { shadowColor: COLORS.shadow, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 12 },
-      android: { elevation: 2 },
-    }),
-  },
-
-  amountInputContainer: {
-    flexDirection: 'row', alignItems: 'flex-end',
-    borderBottomWidth: 2, borderBottomColor: COLORS.accent,
-    paddingBottom: 10, marginBottom: 20,
-  },
-  amountInput: { flex: 1, fontSize: 42, fontWeight: '800', color: COLORS.textPrimary, padding: 0, letterSpacing: -1.5 },
-  currencySymbol: { fontSize: 16, fontWeight: '800', color: COLORS.accent, marginBottom: 6, marginLeft: 8, letterSpacing: 0.5 },
-
-  suggestionsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  suggestionChip: {
-    flexGrow: 1, minWidth: 76,
-    backgroundColor: COLORS.surfaceAlt,
-    paddingVertical: 10, paddingHorizontal: 12,
-    borderRadius: 12, borderWidth: 1.5, borderColor: COLORS.border,
+    paddingHorizontal: 16,
+    paddingTop: 52,
+    paddingBottom: 8,
+    flexDirection: 'row',
     alignItems: 'center',
   },
-  suggestionChipActive: { backgroundColor: COLORS.accent, borderColor: COLORS.accent },
-  suggestionText: { color: COLORS.textPrimary, fontSize: 13, fontWeight: '700', letterSpacing: -0.1 },
-  suggestionTextActive: { color: '#FFFFFF' },
-
-  feesSection: { marginTop: 20, paddingTop: 18, borderTopWidth: 1, borderTopColor: COLORS.borderSoft },
-  feesToggleContainer: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: COLORS.surfaceAlt, borderRadius: 14, padding: 12, marginBottom: 12,
-    borderWidth: 1, borderColor: COLORS.borderSoft,
+  backButton: {
+    width: 44, height: 44, borderRadius: 22,
+    backgroundColor: COLORS.surfaceAlt,
+    alignItems: 'center', justifyContent: 'center',
   },
-  feesToggleLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
-  feesToggleIcon: { width: 34, height: 34, borderRadius: 12, backgroundColor: COLORS.dangerSoft, alignItems: 'center', justifyContent: 'center' },
-  feesToggleIconActive: { backgroundColor: COLORS.successSoft },
-  feesToggleTitle: { fontSize: 13, fontWeight: '800', color: COLORS.textPrimary, letterSpacing: -0.1 },
-  feesToggleSubtitle: { fontSize: 10, color: COLORS.textMuted, marginTop: 2, fontWeight: '500' },
-  feesDetails: { backgroundColor: COLORS.accentSoft, borderRadius: 12, padding: 14, borderWidth: 1, borderColor: COLORS.accent + '25' },
-  feesDetailRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  feesDetailLabel: { fontSize: 12, color: '#7A4A1A', fontWeight: '600' },
-  feesDetailFees: { fontSize: 15, color: COLORS.accent, fontWeight: '800', letterSpacing: -0.2 },
 
-  selectContainer: {
-    flexDirection: 'row', alignItems: 'center',
-    marginHorizontal: 16,
-    backgroundColor: COLORS.surface, borderRadius: 18,
-    borderWidth: 1.5, borderColor: COLORS.border,
-    paddingVertical: 14, paddingHorizontal: 16, gap: 12,
+  // Contenu
+  scrollContent: {
+    paddingHorizontal: 24,
+    paddingTop: 8,
+    paddingBottom: 120,
+  },
+
+  label: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: COLORS.textMuted,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    marginBottom: 12,
+  },
+
+  // Bénéficiaire / Région (même style)
+  beneficiaryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: COLORS.surfaceAlt,
+    borderRadius: 18,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    borderStyle: 'dashed',
+  },
+  beneficiaryButtonFilled: {
+    backgroundColor: COLORS.accentSoft,
+    borderColor: COLORS.accent + '30',
+    borderStyle: 'solid',
+  },
+  beneficiaryAvatar: {
+    width: 44, height: 44, borderRadius: 22,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  beneficiaryName: {
+    fontSize: 16, fontWeight: '700', color: COLORS.textPrimary, letterSpacing: -0.2,
+  },
+  beneficiaryPhone: {
+    fontSize: 12, color: COLORS.textSecondary, marginTop: 2, fontWeight: '500',
+  },
+  beneficiaryEmptyIcon: {
+    width: 44, height: 44, borderRadius: 22,
+    backgroundColor: COLORS.accentSoft,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  beneficiaryEmptyText: {
+    fontSize: 15, fontWeight: '600', color: COLORS.textSecondary,
+  },
+
+  // Montant
+  amountWrapper: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 24,
+    paddingHorizontal: 16,
+    marginTop: 4,
+    borderRadius: 20,
+    borderWidth: 2,
+    borderColor: COLORS.border,
+    borderStyle: 'dashed',
+    backgroundColor: COLORS.surfaceAlt,
+    position: 'relative',
+    minHeight: 140,
+  },
+  amountWrapperFocused: {
+    borderColor: COLORS.primary,
+    borderStyle: 'solid',
+    backgroundColor: COLORS.primarySoft,
+  },
+  amountWrapperError: {
+    borderColor: COLORS.danger,
+    backgroundColor: COLORS.dangerSoft,
+  },
+  amountText: {
+    fontSize: 68,
+    fontWeight: '800',
+    color: COLORS.textPrimary,
+    letterSpacing: -3,
+    lineHeight: 76,
+    textAlign: 'center',
+    includeFontPadding: false,
+  },
+  amountTextError: {
+    color: COLORS.danger,
+  },
+  amountEmptyState: {
+    fontSize: 34,
+    fontWeight: '700',
+    color: COLORS.textMuted,
+    letterSpacing: -0.5,
+    lineHeight: 44,
+    textAlign: 'center',
+  },
+  amountCurrency: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: COLORS.textMuted,
+    letterSpacing: 3,
+    textAlign: 'center',
+    marginTop: 4,
+  },
+  amountHiddenInput: {
+    position: 'absolute',
+    opacity: 0,
+    width: '100%',
+    height: '100%',
+    top: 0,
+    left: 0,
+  },
+  amountErrorRow: {
+    alignItems: 'center',
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  amountErrorText: {
+    fontSize: 12.5,
+    color: COLORS.danger,
+    fontWeight: '700',
+  },
+  balanceHint: {
+    fontSize: 11.5,
+    color: COLORS.textMuted,
+    fontWeight: '500',
+    textAlign: 'center',
+    marginTop: 14,
+  },
+
+  keyboardHintRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 10,
+  },
+  keyboardHintIcon: {
+    fontSize: 14,
+  },
+  keyboardHintLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.textMuted,
+    letterSpacing: 0.3,
+  },
+
+  customCaret: {
+    position: 'absolute',
+    width: 3,
+    height: 56,
+    borderRadius: 2,
+    backgroundColor: COLORS.primary,
+    top: '50%',
+    marginTop: -28,
+  },
+
+  // Suggestions
+  suggestionsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    justifyContent: 'center',
+    marginTop: 16,
+  },
+  suggestionChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 16,
+    backgroundColor: COLORS.surfaceAlt,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+  },
+  suggestionChipActive: {
+    backgroundColor: COLORS.accent,
+    borderColor: COLORS.accent,
+  },
+  suggestionText: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+  },
+  suggestionTextActive: {
+    color: '#FFFFFF',
+  },
+
+  // PIN inline
+  pinInline: {
+    marginTop: 32,
+    backgroundColor: COLORS.surfaceAlt,
+    borderRadius: 18,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: COLORS.borderSoft,
+  },
+  pinInlineHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  pinInlineLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.textSecondary,
+    letterSpacing: 0.2,
+    flex: 1,
+  },
+  pinInlineCounter: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: COLORS.textMuted,
+  },
+  pinInlineRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.surface,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: COLORS.primary + '40',
+    paddingHorizontal: 12,
+  },
+  pinInlineInput: {
+    flex: 1,
+    fontSize: 18,
+    fontWeight: '700',
+    letterSpacing: 4,
+    color: COLORS.textPrimary,
+    textAlign: 'center',
+    paddingVertical: 14,
+  },
+  pinInlineEye: {
+    padding: 6, marginLeft: 4,
+  },
+  pinInlineActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 14,
+  },
+  pinInlineCancel: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pinInlineCancelText: {
+    color: COLORS.textSecondary, fontSize: 14, fontWeight: '700',
+  },
+  pinInlineConfirm: {
+    flex: 1.4,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: COLORS.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
     ...Platform.select({
-      ios: { shadowColor: COLORS.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 8 },
-      android: { elevation: 1 },
+      ios: { shadowColor: COLORS.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 8 },
+      android: { elevation: 3 },
     }),
   },
-  selectContainerFilled: { borderColor: COLORS.accent, backgroundColor: COLORS.accentSoft },
-  selectContainerDisabled: { opacity: 0.9 },
-  selectIconWrap: { width: 42, height: 42, borderRadius: 14, backgroundColor: COLORS.accentSoft, alignItems: 'center', justifyContent: 'center' },
-  selectContent: { flex: 1 },
-  selectText: { fontSize: 15, color: COLORS.textMuted, fontWeight: '600' },
-  selectTextSelected: { color: COLORS.textPrimary, fontWeight: '800' },
-  selectSubtext: { fontSize: 11, color: COLORS.textSecondary, marginTop: 3, fontWeight: '500' },
-
-  withdrawButton: {
-    marginHorizontal: 16, marginTop: 24, borderRadius: 18,
-    backgroundColor: COLORS.accent, paddingVertical: 18, paddingHorizontal: 22,
-    ...Platform.select({
-      ios: { shadowColor: COLORS.accent, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.32, shadowRadius: 16 },
-      android: { elevation: 6 },
-    }),
-  },
-  withdrawButtonDisabled: {
+  pinInlineConfirmDisabled: {
     backgroundColor: COLORS.border,
     ...Platform.select({ ios: { shadowOpacity: 0 }, android: { elevation: 0 } }),
   },
-  withdrawButtonContent: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  withdrawButtonText: { fontSize: 17, fontWeight: '800', color: '#FFFFFF', letterSpacing: -0.2, flex: 1 },
-  withdrawButtonTextDisabled: { color: COLORS.textMuted },
-  withdrawIconCircle: { width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(255,255,255,0.22)', alignItems: 'center', justifyContent: 'center' },
-
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(15,23,42,0.55)', justifyContent: 'center', alignItems: 'center' },
-  modalDragHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: COLORS.border, alignSelf: 'center', marginBottom: 16 },
-
-  regionModalContent: { backgroundColor: COLORS.surface, borderRadius: 24, padding: 20, marginVertical: 40 },
-  regionModalHeader: { marginBottom: 16 },
-  regionModalTitle: { fontSize: 20, fontWeight: '800', color: COLORS.textPrimary, textAlign: 'center', letterSpacing: -0.3 },
-  regionModalSubtitle: { fontSize: 12, color: COLORS.textMuted, textAlign: 'center', marginTop: 4, fontWeight: '500' },
-
-  searchWrapper: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: COLORS.surfaceAlt, borderRadius: 12,
-    paddingHorizontal: 12, height: 46, gap: 8,
-    borderWidth: 1, borderColor: COLORS.borderSoft, marginBottom: 12,
+  pinInlineConfirmText: {
+    color: '#FFFFFF', fontSize: 14, fontWeight: '800', letterSpacing: 0.2,
   },
-  searchInput: { flex: 1, fontSize: 14, color: COLORS.textPrimary, fontWeight: '500', paddingVertical: 0 },
-  clearSearchText: { fontSize: 14, color: COLORS.textMuted, fontWeight: '700', paddingHorizontal: 4 },
 
-  regionLoading: { alignItems: 'center', paddingVertical: 40 },
-  regionLoadingText: { marginTop: 12, color: COLORS.textSecondary, fontSize: 13, fontWeight: '500' },
-  regionEmpty: { alignItems: 'center', paddingVertical: 30, paddingHorizontal: 12 },
-  regionEmptyEmoji: { fontSize: 48, marginBottom: 10 },
-  regionEmptyText: { fontSize: 13, color: COLORS.textMuted, fontWeight: '500', textAlign: 'center', marginBottom: 16, lineHeight: 19 },
-  retryButton: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
+  // CTA
+  ctaContainer: {
+    position: 'absolute',
+    left: 0, right: 0, bottom: 0,
+    paddingHorizontal: 24,
+    paddingBottom: Platform.OS === 'ios' ? 40 : 24,
+    paddingTop: 12,
+    backgroundColor: COLORS.background,
+  },
+  cta: {
     backgroundColor: COLORS.accent,
-    paddingHorizontal: 20, paddingVertical: 12, borderRadius: 14,
+    borderRadius: 20,
+    paddingVertical: 20,
+    paddingHorizontal: 24,
+    ...Platform.select({
+      ios: { shadowColor: COLORS.accent, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.3, shadowRadius: 16 },
+      android: { elevation: 6 },
+    }),
+  },
+  ctaDisabled: {
+    backgroundColor: COLORS.surfaceAlt,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    ...Platform.select({ ios: { shadowOpacity: 0 }, android: { elevation: 0 } }),
+  },
+  ctaContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  ctaText: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: 0.3,
+  },
+  ctaTextDisabled: {
+    color: COLORS.textMuted,
+  },
+  ctaHintText: {
+    fontSize: 11.5,
+    color: COLORS.textMuted,
+    textAlign: 'center',
+    marginTop: 10,
+    fontWeight: '500',
+    letterSpacing: 0.2,
+    paddingHorizontal: 8,
+  },
+
+  // Bottom sheet
+  sheetOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(11,18,32,0.5)',
+    justifyContent: 'flex-end',
+  },
+  sheetBackdrop: { flex: 1 },
+  sheetContent: {
+    backgroundColor: COLORS.surface,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    paddingBottom: 24,
+  },
+  sheetHandle: {
+    width: 40, height: 4, borderRadius: 2,
+    backgroundColor: COLORS.border,
+    alignSelf: 'center', marginBottom: 20,
+  },
+  sheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 20,
+    gap: 12,
+  },
+  sheetTitle: {
+    fontSize: 22, fontWeight: '800', color: COLORS.textPrimary, letterSpacing: -0.5,
+  },
+  sheetSubtitle: {
+    fontSize: 12, color: COLORS.textSecondary, marginTop: 2, fontWeight: '500',
+  },
+  sheetCloseBtn: {
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: COLORS.surfaceAlt,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  sheetLoading: { alignItems: 'center', paddingVertical: 40 },
+  sheetEmpty: { alignItems: 'center', paddingVertical: 40, paddingHorizontal: 20 },
+  sheetEmptyEmoji: { fontSize: 40, marginBottom: 10 },
+  sheetEmptyTitle: { fontSize: 15, fontWeight: '700', color: COLORS.textSecondary, textAlign: 'center' },
+
+  searchInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.surfaceAlt,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    marginBottom: 12,
+    overflow: 'hidden',
+    height: 48,
+  },
+  searchIconWrap: {
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  searchInput: {
+    flex: 1,
+    paddingVertical: 14,
+    paddingHorizontal: 4,
+    fontSize: 15,
+    fontWeight: '600',
+    color: COLORS.textPrimary,
+  },
+  clearSearchText: {
+    fontSize: 14,
+    color: COLORS.textMuted,
+    fontWeight: '700',
+    paddingHorizontal: 12,
+  },
+
+  // Contact row (régions)
+  contactRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.borderSoft,
+  },
+  contactRowAvatar: {
+    width: 44, height: 44, borderRadius: 22,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  contactRowName: {
+    fontSize: 14.5, fontWeight: '700', color: COLORS.textPrimary, letterSpacing: -0.1,
+    marginBottom: 2,
+  },
+  contactRowPhone: {
+    fontSize: 11.5, color: COLORS.textMuted, fontWeight: '500',
+  },
+  contactRowCheck: {
+    width: 24, height: 24, borderRadius: 12,
+    backgroundColor: COLORS.accent,
+    alignItems: 'center', justifyContent: 'center',
+  },
+
+  retryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: COLORS.accent,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 14,
+    marginTop: 16,
     ...Platform.select({
       ios: { shadowColor: COLORS.accent, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 8 },
       android: { elevation: 3 },
@@ -1339,157 +2096,239 @@ const styles = StyleSheet.create({
   },
   retryButtonText: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
 
-  regionItem: { flexDirection: 'row', alignItems: 'center', padding: 12, borderRadius: 14, marginBottom: 4, gap: 12, borderWidth: 1, borderColor: 'transparent' },
-  regionItemSelected: { backgroundColor: COLORS.accentSoft, borderColor: COLORS.accent + '40' },
-  regionItemIcon: { width: 42, height: 42, borderRadius: 14, backgroundColor: COLORS.accentSoft, alignItems: 'center', justifyContent: 'center' },
-  regionItemIconSelected: { backgroundColor: COLORS.accent },
-  regionItemText: { flex: 1, fontSize: 15, fontWeight: '700', color: COLORS.textPrimary, letterSpacing: -0.1 },
-  regionItemTextSelected: { color: COLORS.accent, fontWeight: '800' },
-  regionItemCheck: { width: 24, height: 24, borderRadius: 12, backgroundColor: COLORS.accent, alignItems: 'center', justifyContent: 'center' },
-  regionCloseButton: { marginTop: 12, paddingVertical: 14, borderRadius: 14, backgroundColor: COLORS.surfaceAlt, alignItems: 'center', borderWidth: 1, borderColor: COLORS.border },
-  regionCloseButtonText: { color: COLORS.textSecondary, fontSize: 15, fontWeight: '700' },
-
-  confirmModalContent: { backgroundColor: COLORS.surface, borderRadius: 24, padding: 24, alignItems: 'center' },
-  confirmIconWrapper: { marginBottom: 16 },
-  confirmTitle: { fontSize: 18, fontWeight: '800', color: COLORS.textPrimary, letterSpacing: -0.2, marginBottom: 6 },
-  confirmAmount: { fontSize: 26, fontWeight: '800', color: COLORS.accent, letterSpacing: -0.5, marginBottom: 4 },
-  confirmRecipient: { fontSize: 14, color: COLORS.textSecondary, fontWeight: '600', marginBottom: 18, textAlign: 'center' },
-  confirmInfoBox: { backgroundColor: COLORS.surfaceAlt, borderRadius: 14, padding: 14, width: '100%', marginBottom: 18, borderWidth: 1, borderColor: COLORS.borderSoft },
-  confirmInfoRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 4 },
-  confirmInfoLabel: { fontSize: 12, color: COLORS.textSecondary, fontWeight: '600' },
-  confirmInfoValue: { fontSize: 12, color: COLORS.textPrimary, fontWeight: '700' },
-  confirmInfoDivider: { height: 1, backgroundColor: COLORS.border, marginVertical: 8 },
-  confirmInfoLabelTotal: { fontSize: 13, fontWeight: '800', color: COLORS.accent },
-  confirmInfoValueTotal: { fontSize: 14, fontWeight: '800', color: COLORS.accent },
-  confirmInfoLabelReceived: { fontSize: 13, fontWeight: '800', color: COLORS.primary },
-  confirmInfoValueReceived: { fontSize: 14, fontWeight: '800', color: COLORS.primary },
-  confirmHintText: { fontSize: 13, fontWeight: '700', color: COLORS.textSecondary, marginBottom: 12 },
-
-  pinInputWrapper: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: COLORS.surfaceAlt, borderRadius: 14,
-    borderWidth: 1.5, borderColor: COLORS.accent + '40',
-    paddingHorizontal: 12, marginBottom: 6, width: '100%',
+  // Confirm sheet
+  confirmSheetContent: {
+    backgroundColor: COLORS.surface,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    paddingBottom: 24,
   },
-  pinInput: {
-    flex: 1, fontSize: 18, fontWeight: '700',
-    letterSpacing: 2, color: COLORS.textPrimary,
-    textAlign: 'center', paddingVertical: 14,
-  },
-  pinEyeButton: { padding: 8, marginLeft: 4, alignItems: 'center', justifyContent: 'center' },
-  pinToggleLabelWrapper: { alignSelf: 'center', paddingVertical: 4, paddingHorizontal: 8, marginBottom: 8 },
-  pinToggleLabelText: { fontSize: 12, fontWeight: '700', color: COLORS.accent, textDecorationLine: 'underline' },
-
-  biometricButton: {
-    backgroundColor: COLORS.accentSoft, width: 76, height: 76, borderRadius: 38,
-    alignItems: 'center', justifyContent: 'center', alignSelf: 'center',
-    marginVertical: 4, borderWidth: 2, borderColor: COLORS.accent + '25',
-  },
-  biometricIcon: { width: 44, height: 44, resizeMode: 'contain', tintColor: COLORS.accent },
-  switchMethodButton: { marginVertical: 10, paddingVertical: 6 },
-  switchMethodText: { color: COLORS.accent, fontSize: 13, fontWeight: '700', textDecorationLine: 'underline' },
-
-  confirmButtonFull: {
-    width: '100%',
-    paddingVertical: 14,
-    borderRadius: 14,
+  confirmHeader: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 8,
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  confirmTitle: {
+    fontSize: 20, fontWeight: '800', color: COLORS.textPrimary, letterSpacing: -0.3,
+  },
+  confirmAmount: {
+    fontSize: 32,
+    fontWeight: '800',
+    color: COLORS.accent,
+    letterSpacing: -1,
+    marginBottom: 6,
+    textAlign: 'center',
+  },
+  confirmRecipient: {
+    fontSize: 14,
+    color: COLORS.textSecondary,
+    fontWeight: '600',
+    marginBottom: 18,
+    textAlign: 'center',
+  },
+
+  // Fees section (dans le modal)
+  feesSection: { marginBottom: 16 },
+  feesToggleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: COLORS.surfaceAlt,
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: COLORS.borderSoft,
+  },
+  feesToggleLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
+  feesToggleIcon: {
+    width: 34, height: 34, borderRadius: 12,
+    backgroundColor: COLORS.dangerSoft,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  feesToggleIconActive: { backgroundColor: COLORS.successSoft },
+  feesToggleTitle: { fontSize: 13, fontWeight: '800', color: COLORS.textPrimary, letterSpacing: -0.1 },
+  feesToggleSubtitle: { fontSize: 10, color: COLORS.textMuted, marginTop: 2, fontWeight: '500' },
+  feesDetails: {
+    backgroundColor: COLORS.accentSoft,
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: COLORS.accent + '25',
+  },
+  feesDetailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 4,
+  },
+  feesDetailLabel: { fontSize: 12, color: '#7A4A1A', fontWeight: '600' },
+  feesDetailFees: { fontSize: 15, color: COLORS.accent, fontWeight: '800' },
+  feesDetailDivider: { height: 1, backgroundColor: COLORS.accent + '20', marginVertical: 6 },
+  feesDetailLabelTotal: { fontSize: 13, fontWeight: '800', color: COLORS.accent },
+  feesDetailValueTotal: { fontSize: 14, fontWeight: '800', color: COLORS.accent },
+  feesDetailLabelReceived: { fontSize: 13, fontWeight: '800', color: COLORS.primary },
+  feesDetailValueReceived: { fontSize: 14, fontWeight: '800', color: COLORS.primary },
+
+  // Confirm button
+  confirmButton: {
     backgroundColor: COLORS.accent,
+    borderRadius: 20,
+    paddingVertical: 20,
+    paddingHorizontal: 24,
+    marginTop: 8,
     ...Platform.select({
-      ios: { shadowColor: COLORS.accent, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 8 },
-      android: { elevation: 3 },
+      ios: { shadowColor: COLORS.accent, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.3, shadowRadius: 16 },
+      android: { elevation: 6 },
     }),
   },
-  confirmButtonDisabled: { backgroundColor: COLORS.textMuted },
-  confirmButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800', letterSpacing: 0.2 },
+  confirmButtonDisabled: {
+    backgroundColor: COLORS.border,
+    ...Platform.select({ ios: { shadowOpacity: 0 }, android: { elevation: 0 } }),
+  },
+  confirmButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  confirmButtonText: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: 0.3,
+  },
 
-  modalButtons: { flexDirection: 'row', gap: 10, marginTop: 12, width: '100%' },
-  modalButton: { flex: 1, paddingVertical: 14, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  cancelButton: { backgroundColor: COLORS.surfaceAlt, borderWidth: 1, borderColor: COLORS.border },
-  cancelButtonText: { color: COLORS.textSecondary, fontSize: 15, fontWeight: '700' },
-
+  // Reçu
   receiptOverlay: {
-    flex: 1, backgroundColor: 'rgba(15,23,42,0.6)',
-    justifyContent: 'center', alignItems: 'center',
-    paddingHorizontal: 12, paddingTop: 40, paddingBottom: 30,
+    flex: 1,
+    backgroundColor: 'rgba(11,18,32,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingTop: 40,
+    paddingBottom: 30,
   },
   receiptModalContent: {
-    backgroundColor: COLORS.surface, borderRadius: 24,
-    paddingTop: 18, paddingHorizontal: 18, paddingBottom: 0,
-    overflow: 'hidden', flexDirection: 'column',
+    backgroundColor: COLORS.surface,
+    borderRadius: 24,
+    paddingTop: 18,
+    paddingHorizontal: 18,
+    paddingBottom: 0,
+    overflow: 'hidden',
+    flexDirection: 'column',
   },
   receiptHeader: { alignItems: 'center', marginBottom: 10, flexShrink: 0 },
-  receiptIcon: { width: 50, height: 50, borderRadius: 25, backgroundColor: COLORS.successSoft, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
+  receiptIcon: {
+    width: 50, height: 50, borderRadius: 25,
+    backgroundColor: COLORS.successSoft,
+    alignItems: 'center', justifyContent: 'center',
+    marginBottom: 8,
+  },
   receiptIconText: { fontSize: 24 },
   receiptTitle: { fontSize: 17, fontWeight: '800', color: COLORS.accent, letterSpacing: -0.3 },
   receiptSubtitle: { fontSize: 11, color: COLORS.textMuted, marginTop: 2, fontWeight: '500' },
-
   receiptScroll: { flexShrink: 1, marginTop: 2 },
   receiptScrollContent: { paddingBottom: 8 },
   receiptActionsContainer: {
-    paddingTop: 10, paddingBottom: 16,
+    paddingTop: 10,
+    paddingBottom: 16,
     backgroundColor: COLORS.surface,
-    borderTopWidth: 1, borderTopColor: COLORS.borderSoft, flexShrink: 0,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.borderSoft,
+    flexShrink: 0,
   },
-
-  receiptCard: { backgroundColor: COLORS.surfaceAlt, borderRadius: 14, padding: 12, marginBottom: 10, borderWidth: 1, borderColor: COLORS.borderSoft },
-  receiptSectionLabel: { fontSize: 10, color: COLORS.textMuted, fontWeight: '800', letterSpacing: 1.2, marginBottom: 8 },
-  receiptRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 5 },
-  receiptRowTotal: { borderTopWidth: 1, borderTopColor: COLORS.border, marginTop: 4, paddingTop: 8 },
+  receiptCard: {
+    backgroundColor: COLORS.surfaceAlt,
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: COLORS.borderSoft,
+  },
+  receiptSectionLabel: {
+    fontSize: 10, color: COLORS.textMuted, fontWeight: '800', letterSpacing: 1.2, marginBottom: 8,
+  },
+  receiptRow: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 5,
+  },
+  receiptRowTotal: {
+    borderTopWidth: 1, borderTopColor: COLORS.border, marginTop: 4, paddingTop: 8,
+  },
   receiptLabel: { fontSize: 12, color: COLORS.textSecondary, flexShrink: 0, fontWeight: '500' },
   receiptLabelTotal: { fontSize: 13, fontWeight: '800', color: COLORS.accent },
-  receiptValue: { fontSize: 12, fontWeight: '700', color: COLORS.textPrimary, textAlign: 'right', flex: 1, marginLeft: 8 },
+  receiptValue: {
+    fontSize: 12, fontWeight: '700', color: COLORS.textPrimary,
+    textAlign: 'right', flex: 1, marginLeft: 8,
+  },
   receiptValueFees: { color: COLORS.danger, fontWeight: '700' },
   receiptValueReceived: { color: COLORS.primary, fontWeight: '800' },
   receiptValueTotal: { fontSize: 14, fontWeight: '800', color: COLORS.accent },
-
   receiptParticipantCard: {
     flexDirection: 'row', alignItems: 'center',
     backgroundColor: COLORS.surface, borderRadius: 10,
     paddingVertical: 8, paddingHorizontal: 10,
-    borderWidth: 1, borderColor: COLORS.borderSoft, marginBottom: 4,
+    borderWidth: 1, borderColor: COLORS.borderSoft,
+    marginBottom: 4,
   },
   receiptParticipantBadgeTo: {
     width: 30, height: 30, borderRadius: 15,
     backgroundColor: COLORS.accentSoft,
-    alignItems: 'center', justifyContent: 'center', marginRight: 10,
+    alignItems: 'center', justifyContent: 'center',
+    marginRight: 10,
   },
   receiptParticipantBadgeText: { fontSize: 12, fontWeight: '800', color: COLORS.textPrimary },
   receiptParticipantInfo: { flex: 1 },
-  receiptParticipantName: { fontSize: 12.5, fontWeight: '800', color: COLORS.textPrimary, letterSpacing: -0.1, marginBottom: 1 },
-  receiptParticipantPhone: { fontSize: 11, fontWeight: '600', color: COLORS.textSecondary, letterSpacing: 0.2 },
-
+  receiptParticipantName: {
+    fontSize: 12.5, fontWeight: '800', color: COLORS.textPrimary,
+    letterSpacing: -0.1, marginBottom: 1,
+  },
+  receiptParticipantPhone: {
+    fontSize: 11, fontWeight: '600', color: COLORS.textSecondary, letterSpacing: 0.2,
+  },
   receiptCodeCard: {
     backgroundColor: COLORS.accentSoft, borderRadius: 14,
     padding: 12, marginBottom: 8, alignItems: 'center',
     borderWidth: 1, borderColor: COLORS.accent + '25',
   },
   receiptCodeHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 },
-  receiptCodeLabel: { fontSize: 9, color: '#7A4A1A', textTransform: 'uppercase', letterSpacing: 1.4, fontWeight: '800' },
+  receiptCodeLabel: {
+    fontSize: 9, color: '#7A4A1A', textTransform: 'uppercase', letterSpacing: 1.4, fontWeight: '800',
+  },
   receiptCode: {
     fontSize: 15, fontWeight: '800', color: COLORS.accent, letterSpacing: 1.8,
     fontFamily: Platform.OS === 'ios' ? 'Courier New' : 'monospace',
     textAlign: 'center',
   },
-  receiptCodeCopy: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    marginTop: 10, paddingHorizontal: 12, paddingVertical: 7,
-    backgroundColor: COLORS.surface, borderRadius: 20,
-    borderWidth: 1, borderColor: COLORS.accent + '30',
+  receiptUuidSeparator: { height: 1, backgroundColor: COLORS.accent + '30', marginVertical: 8, width: '80%' },
+  receiptUuidLabel: {
+    fontSize: 8.5, color: '#7A4A1A', marginBottom: 3,
+    textTransform: 'uppercase', letterSpacing: 1.2, fontWeight: '700', opacity: 0.7,
   },
-  receiptCodeCopyText: { fontSize: 11.5, color: COLORS.accent, fontWeight: '700' },
-
+  receiptUuidValue: {
+    fontSize: 9.5, color: '#7A4A1A',
+    fontFamily: Platform.OS === 'ios' ? 'Courier New' : 'monospace',
+    textAlign: 'center', paddingHorizontal: 6, opacity: 0.85,
+  },
   receiptDate: { textAlign: 'center', fontSize: 10.5, color: COLORS.textMuted, marginBottom: 2, fontWeight: '600' },
-
   receiptButtons: { flexDirection: 'row', gap: 8, marginBottom: 8 },
-  receiptButton: { flex: 1, paddingVertical: 12, borderRadius: 12, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6 },
-  receiptCopyButton: { backgroundColor: COLORS.primarySoft, borderWidth: 1.5, borderColor: COLORS.primary + '30' },
+  receiptButton: {
+    flex: 1, paddingVertical: 12, borderRadius: 12,
+    alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6,
+  },
+  receiptCopyButton: {
+    backgroundColor: COLORS.primarySoft,
+    borderWidth: 1.5, borderColor: COLORS.primary + '30',
+  },
   receiptCopyButtonText: { fontSize: 13, fontWeight: '800', color: COLORS.primary },
-  receiptShareButton: { backgroundColor: COLORS.accentSoft, borderWidth: 1.5, borderColor: COLORS.accent + '30' },
+  receiptShareButton: {
+    backgroundColor: COLORS.accentSoft,
+    borderWidth: 1.5, borderColor: COLORS.accent + '30',
+  },
   receiptShareButtonText: { fontSize: 13, fontWeight: '800', color: COLORS.accent },
-
   receiptDoneButton: {
     backgroundColor: COLORS.accent,
     paddingVertical: 14, borderRadius: 12,

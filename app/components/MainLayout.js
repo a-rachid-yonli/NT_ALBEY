@@ -7,14 +7,9 @@
 // ✅ FIX v2 : footer menu → logo NT Albey (image) au lieu du texte "NT"
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
-  View,
-  Text,
-  TouchableOpacity,
   StyleSheet,
   Image,
-  Alert,
   Modal,
-  ScrollView,
   Animated,
   Easing,
   Platform,
@@ -23,32 +18,17 @@ import Svg, { Path, Circle, Rect } from 'react-native-svg';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { API } from '../services/api';
-import { useTranslation } from '../context/LanguageContext';
+import { useTranslation, TranslatedText as Text, TranslatedAlert as Alert, ThemedView as View, ThemedTouchableOpacity as TouchableOpacity, ThemedScrollView as ScrollView } from '../context/LanguageContext';
 import { AVAILABLE_LANGUAGES } from '../translations';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
+import KycVerificationModal, { getSavedKycStatus } from './KycVerificationModal';
 import { isDeviceCompromised } from '../utils/security';
+import { AppTheme } from './AppTheme';
 
 const COLORS = {
-  primary:      '#008933',
-  primarySoft:  '#E8F5E9',
-  primaryDark:  '#006B28',
-  accent:       '#FF6600',
-  accentSoft:   '#FFF3E0',
-  textPrimary:  '#0F172A',
-  textSecondary:'#64748B',
-  textMuted:    '#94A3B8',
-  border:       '#E2E8F0',
-  borderSoft:   '#F1F5F9',
-  surface:      '#FFFFFF',
-  surfaceAlt:   '#F8FAFC',
-  background:   '#F1F5F9',
-  danger:       '#EF4444',
-  dangerSoft:   '#FEE2E2',
-  success:      '#10B981',
-  successSoft:  '#D1FAE5',
-  warning:      '#F59E0B',
-  warningSoft:  '#FEF3C7',
-  shadow:       '#0F172A',
+  ...AppTheme.colors,
+  borderSoft: AppTheme.colors.border,
 };
 
 const IconHamburger = () => (
@@ -87,12 +67,12 @@ const IconHome = ({ active }) => {
 };
 
 const IconHistory = ({ active }) => {
-  const c = active ? COLORS.accent : COLORS.textMuted;
   return (
-    <Svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-      <Circle cx="12" cy="12" r="9" stroke={c} strokeWidth="2" fill={active ? `${COLORS.accent}15` : 'none'} />
-      <Path d="M12 7v5l3 3" stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-    </Svg>
+    <Image
+      source={require('../assets/history.png')}
+      style={{ width: 38, height: 38, opacity: active ? 1 : 0.72 }}
+      resizeMode="contain"
+    />
   );
 };
 
@@ -219,7 +199,7 @@ const BottomNav = ({ active, navigation }) => {
   };
 
   return (
-    <View style={[styles.bottomNavWrapper, { paddingBottom: insets.bottom > 0 ? insets.bottom + 8 : 16 }]}>
+    <View style={[styles.bottomNavWrapper, { paddingBottom: Math.max(insets.bottom, 8) + 8 }]}>
       <View style={styles.bottomNav}>
         {items.map((item) => {
           const isDisabled = !item.available;
@@ -263,7 +243,18 @@ const BottomNav = ({ active, navigation }) => {
 
 const HamburgerMenu = ({ visible, onClose, navigation, user = {}, kycStatus = null, isCompromised = false }) => {
   const { t } = useTranslation();
+  const { isDark, toggleTheme } = useTheme();
   const insets = useSafeAreaInsets();
+  const [kycModalVisible, setKycModalVisible] = useState(false);
+  const [localKyc, setLocalKyc] = useState(null);
+
+  useEffect(() => {
+    if (visible) {
+      getSavedKycStatus(user?.phone).then((saved) => {
+        if (saved) setLocalKyc(saved);
+      });
+    }
+  }, [visible, user?.phone]);
 
   const menuItems = [
     {
@@ -296,7 +287,7 @@ const HamburgerMenu = ({ visible, onClose, navigation, user = {}, kycStatus = nu
   const statusKey  = user?.status || 'active';
   const statusInfo = STATUS_LABELS[statusKey] || STATUS_LABELS.active;
 
-  const kycStatusKey = kycStatus?.status || 'none';
+  const kycStatusKey = localKyc?.status || kycStatus?.status || 'none';
   const kycInfo = KYC_STATUS_LABELS[kycStatusKey] || KYC_STATUS_LABELS.none;
 
   return (
@@ -340,12 +331,16 @@ const HamburgerMenu = ({ visible, onClose, navigation, user = {}, kycStatus = nu
                 </Text>
               </View>
 
-              <View style={[styles.kycBadge, { backgroundColor: kycInfo.bg }]}>
+              <TouchableOpacity
+                style={[styles.kycBadge, { backgroundColor: kycInfo.bg }]}
+                onPress={() => setKycModalVisible(true)}
+                activeOpacity={0.75}
+              >
                 <Text style={[styles.kycBadgeIcon, { color: kycInfo.color }]}>{kycInfo.icon}</Text>
                 <Text style={[styles.kycBadgeText, { color: kycInfo.color }]}>
                   {kycInfo.shortLabel}
                 </Text>
-              </View>
+              </TouchableOpacity>
             </View>
 
             {/* 🔐 Badge de compromission */}
@@ -396,10 +391,27 @@ const HamburgerMenu = ({ visible, onClose, navigation, user = {}, kycStatus = nu
                   </TouchableOpacity>
                 );
               })}
+
+              <TouchableOpacity
+                style={[styles.menuItem, styles.menuItemBordered, { borderTopWidth: 1, borderTopColor: COLORS.borderSoft }]}
+                onPress={toggleTheme}
+                activeOpacity={0.65}
+              >
+                <View style={styles.menuItemIcon}>
+                  <Text style={{ fontSize: 18 }}>{isDark ? '☀️' : '🌙'}</Text>
+                </View>
+                <View style={styles.menuItemTextWrap}>
+                  <Text style={styles.menuItemLabel}>{isDark ? 'Mode clair' : 'Mode sombre'}</Text>
+                  <Text style={styles.menuItemSubtitle} numberOfLines={1}>Thème de l'application</Text>
+                </View>
+                <View style={styles.menuItemChevron}>
+                  <MenuIconChevron />
+                </View>
+              </TouchableOpacity>
             </View>
           </ScrollView>
 
-          <View style={[styles.menuFooter, { paddingBottom: insets.bottom > 0 ? insets.bottom + 12 : 16 }]}>
+          <View style={[styles.menuFooter, { paddingBottom: Math.max(insets.bottom, 12) + 12 }]}>
             <View style={styles.menuFooterLogo}>
               <Image
                 source={require('../assets/images/logo-carre.png')}
@@ -417,6 +429,12 @@ const HamburgerMenu = ({ visible, onClose, navigation, user = {}, kycStatus = nu
             </View>
           </View>
         </View>
+        <KycVerificationModal
+          visible={kycModalVisible}
+          onClose={() => setKycModalVisible(false)}
+          userPhone={userPhone}
+          onVerified={(data) => setLocalKyc(data)}
+        />
       </View>
     </Modal>
   );
@@ -427,6 +445,7 @@ export default function MainLayout({ children, activeScreen, onLogout }) {
   const insets = useSafeAreaInsets();
   const { t, language, setLanguage } = useTranslation();
   const { logout } = useAuth();
+  const { isDark, colors: themeColors } = useTheme();
   const [menuVisible, setMenuVisible] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [userProfile, setUserProfile] = useState(null);
@@ -555,8 +574,8 @@ export default function MainLayout({ children, activeScreen, onLogout }) {
   const currentLangData = AVAILABLE_LANGUAGES.find(l => l.code === language) || AVAILABLE_LANGUAGES[0];
 
   return (
-    <View style={styles.container}>
-      <View style={[styles.header, { paddingTop: insets.top > 0 ? insets.top + 8 : 16 }]}>
+    <View style={[styles.container, isDark && { backgroundColor: themeColors.background }]}>
+      <View style={[styles.header, { paddingTop: insets.top > 0 ? insets.top + 4 : 10 }, isDark && { backgroundColor: themeColors.surface, borderBottomColor: themeColors.border }]}>
         <View style={styles.headerLeft}>
           <TouchableOpacity
             onPress={() => setMenuVisible(true)}
@@ -640,7 +659,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingBottom: 12,
+    paddingBottom: 8,
     backgroundColor: COLORS.surface,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.borderSoft,
@@ -656,9 +675,9 @@ const styles = StyleSheet.create({
   },
   headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   hamburgerButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
+    width: 38,
+    height: 38,
+    borderRadius: 12,
     backgroundColor: COLORS.surfaceAlt,
     alignItems: 'center',
     justifyContent: 'center',
@@ -666,8 +685,8 @@ const styles = StyleSheet.create({
     borderColor: COLORS.borderSoft,
   },
   logoImage: {
-    width: 100,
-    height: 44,
+    width: 88,
+    height: 38,
     resizeMode: 'contain',
     marginLeft: 2,
   },
@@ -677,9 +696,9 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   iconButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
+    width: 38,
+    height: 38,
+    borderRadius: 12,
     backgroundColor: COLORS.surfaceAlt,
     alignItems: 'center',
     justifyContent: 'center',
@@ -688,9 +707,9 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   languageHeaderButton: {
-    minWidth: 44,
-    height: 44,
-    borderRadius: 14,
+    minWidth: 38,
+    height: 38,
+    borderRadius: 12,
     paddingHorizontal: 12,
     backgroundColor: COLORS.primarySoft,
     alignItems: 'center',
@@ -736,7 +755,7 @@ const styles = StyleSheet.create({
 
   bottomNavWrapper: {
     backgroundColor: COLORS.surface,
-    paddingTop: 12,
+    paddingTop: 6,
     paddingHorizontal: 16,
     borderTopWidth: 1,
     borderTopColor: COLORS.borderSoft,
@@ -760,11 +779,11 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
+    gap: 2,
   },
   navIconWrap: {
-    width: 44,
-    height: 34,
+    width: 38,
+    height: 30,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
@@ -773,7 +792,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.accentSoft,
   },
   navLabel: {
-    fontSize: 10,
+    fontSize: 9.5,
     color: COLORS.textMuted,
     fontWeight: '600',
     letterSpacing: 0.2,
@@ -791,13 +810,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   qrPayButton: {
-    width: 58,
-    height: 58,
-    borderRadius: 20,
+    width: 52,
+    height: 52,
+    borderRadius: 18,
     backgroundColor: COLORS.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: -24,
+    marginTop: -20,
     borderWidth: 4,
     borderColor: COLORS.surface,
     ...Platform.select({

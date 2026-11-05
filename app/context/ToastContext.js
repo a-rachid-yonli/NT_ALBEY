@@ -15,6 +15,7 @@ import React, {
   useCallback,
   useEffect,
 } from 'react';
+import { humanizeError } from '../utils/errorHandler';
 
 const ToastContext = createContext(null);
 
@@ -31,8 +32,15 @@ export const ToastProvider = ({ children }) => {
     }
 
     // Nouveau toast avec un id unique
+    const isErr = options?.type === 'error' || options?.type === 'warning';
+    const cleanTitle = typeof options?.title === 'string'
+      ? options.title.replace(/^[✅⚠️❌✨🔒]+\s*/, '').trim()
+      : options?.title;
+    const cleanMsg = isErr && options?.message ? humanizeError(options.message) : options?.message;
     setToast({
       ...options,
+      title: cleanTitle,
+      message: cleanMsg,
       id: Date.now(),
     });
   }, []);

@@ -3,19 +3,14 @@
 // ✅ Dates relatives user-friendly (À l'instant, Il y a X min, Hier, etc.)
 import React, { useState, useEffect } from 'react';
 import {
-  View,
-  Text,
-  TouchableOpacity,
   StyleSheet,
-  ScrollView,
-  Alert,
   ActivityIndicator,
   Platform,
 } from 'react-native';
 import Svg, { Path, Circle, Rect } from 'react-native-svg';
 import MainLayout from '../components/MainLayout';
 import { API } from '../services/api';
-import { useTranslation } from '../context/LanguageContext';
+import { useTranslation, TranslatedText as Text, TranslatedAlert as Alert, ThemedView as View, ThemedTouchableOpacity as TouchableOpacity, ThemedScrollView as ScrollView } from '../context/LanguageContext';
 
 // ═══════════════════════════════════════════════════════════════
 // 🎨 PALETTE PREMIUM

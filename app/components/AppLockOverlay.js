@@ -7,32 +7,32 @@
 //    - Validation stricte du PIN (8-20 caractères)
 //    - verifyPin utilise /auth/verify-pin (pas de swap de session)
 // ✅ v2 : toggle œil SVG propre (voir/cacher le mot de passe) + zone tactile large
+// ✅ v3 : PIN RENFORCÉ
+//    - Import de PIN_HELPER_TEXT depuis validators.js
+//    - Texte d'aide sous le champ PIN
+//    - Message d'erreur uniformisé
 import React, { useEffect, useState, useRef } from 'react';
 import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
   StyleSheet,
   Modal,
   Image,
   ActivityIndicator,
-  KeyboardAvoidingView,
   Platform,
 } from 'react-native';
 import Svg, { Path, Circle } from 'react-native-svg';
 import * as LocalAuthentication from 'expo-local-authentication';
 
 import { useAppLock } from '../context/AppLockContext';
-import { useTranslation } from '../context/LanguageContext';
+import { useTranslation, TranslatedText as Text, TranslatedTextInput as TextInput, ThemedView as View, ThemedTouchableOpacity as TouchableOpacity, ThemedKeyboardAvoidingView as KeyboardAvoidingView } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
 import { API } from '../services/api';
+import { triggerSuccessHaptic, triggerErrorHaptic } from '../utils/haptics';
 import {
   checkRateLimit,
   resetRateLimit,
   formatRetryAfter,
 } from '../utils/rateLimiter';
-import { isValidPin } from '../utils/validators';
+import { isValidPin, PIN_HELPER_TEXT } from '../utils/validators';
 
 // ═══════════════════════════════════════════════════════════
 // 🎨 ICÔNES ŒIL (SVG)
@@ -165,7 +165,8 @@ export default function AppLockOverlay() {
         try {
           await API.verifyBiometricForTransaction(user?.phone);
           resetRateLimit(`applock:${user?.phone || 'unknown'}`);
-          unlock();
+          triggerSuccessHaptic();
+        unlock();
         } catch (backendErr) {
           if (__DEV__) console.log('⚠️ [AppLock] Vérif backend échouée');
           setError('Session biométrique invalide. Utilisez votre PIN.');
@@ -179,8 +180,9 @@ export default function AppLockOverlay() {
   };
 
   const handlePinSubmit = async () => {
+    // ✅ v3 : message uniformisé
     if (!isPinValid) {
-      setError('Le PIN doit contenir entre 8 et 20 caractères.');
+      setError(PIN_HELPER_TEXT);
       return;
     }
     if (isVerifying) return;
@@ -330,6 +332,9 @@ export default function AppLockOverlay() {
 
           <Text style={styles.charCounter}>{pin.length}/20</Text>
 
+          {/* ✅ v3 : texte d'aide PIN visible */}
+          <Text style={styles.pinHelper}>{PIN_HELPER_TEXT}</Text>
+
           {error !== '' && <Text style={styles.errorText}>{error}</Text>}
 
           <TouchableOpacity
@@ -477,8 +482,18 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#AAA',
     marginTop: 2,
-    marginBottom: 8,
+    marginBottom: 4,
     alignSelf: 'flex-end',
+  },
+  // ✅ v3 : style du texte d'aide PIN
+  pinHelper: {
+    fontSize: 11,
+    color: '#888',
+    fontStyle: 'italic',
+    textAlign: 'center',
+    marginBottom: 8,
+    lineHeight: 15,
+    fontWeight: '500',
   },
   errorText: {
     color: '#FF4444',

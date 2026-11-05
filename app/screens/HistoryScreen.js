@@ -9,21 +9,17 @@
 // ✅ v4 : SUPPORT TRANSFERT GUICHET (transferAgency) — filtre dédié + détection
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  View,
-  Text,
-  TouchableOpacity,
   StyleSheet,
-  ScrollView,
   Image,
-  TextInput,
   Modal,
   Share,
-  Alert,
   useWindowDimensions,
   ActivityIndicator,
   Platform,
   RefreshControl,
 } from 'react-native';
+import { TranslatedText as Text, TranslatedTextInput as TextInput, TranslatedAlert as Alert, ThemedView as View, ThemedTouchableOpacity as TouchableOpacity, ThemedScrollView as ScrollView } from '../context/LanguageContext';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path, Circle, Rect, Line } from 'react-native-svg';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
@@ -32,6 +28,7 @@ import { getLogoBase64 } from '../utils/pdfUtils';
 import { useTransactions } from '../context/TransactionContext';
 import { API } from '../services/api';
 import { getTxMetadata } from '../utils/txRefCache';
+import { TransactionSkeletonList } from '../components/SkeletonLoader';
 
 // ═══════════════════════════════════════════════════════════════
 // 🎨 PALETTE PREMIUM
@@ -174,6 +171,7 @@ const IconSparkle = () => (
 // 📜 ÉCRAN HISTORIQUE
 // ═══════════════════════════════════════════════════════════════
 export default function HistoryScreen({ navigation }) {
+  const insets = useSafeAreaInsets();
   const { width = 400, height = 800 } = useWindowDimensions();
   const [selectedFilter, setSelectedFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -196,7 +194,7 @@ export default function HistoryScreen({ navigation }) {
   // ✅ PULL-TO-REFRESH
   const [refreshing, setRefreshing] = useState(false);
 
-  const { transactions, deleteTransaction, isLoading, refreshData } = useTransactions();
+  const { transactions, deleteTransaction, isLoading, refreshData, isOfflineCache } = useTransactions();
 
   useEffect(() => {
     (async () => {
@@ -840,16 +838,15 @@ NT Albey - Votre argent, partout, tout le temps`;
   if (isLoading) {
     return (
       <View style={styles.container}>
-        <View style={styles.header}>
+        <View style={[styles.header, { paddingTop: Math.max(insets.top, 20) + 12 }]}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton} activeOpacity={0.7}>
             <IconBack />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Historique</Text>
           <View style={{ width: 44 }} />
         </View>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={COLORS.primary} />
-          <Text style={styles.loadingText}>Chargement…</Text>
+        <View style={{ paddingHorizontal: 16, paddingTop: 18 }}>
+          <TransactionSkeletonList count={6} />
         </View>
       </View>
     );
@@ -858,7 +855,7 @@ NT Albey - Votre argent, partout, tout le temps`;
   return (
     <View style={styles.container}>
       {/* ═══════════ HEADER ═══════════ */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: Math.max(insets.top, 20) + 12 }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton} activeOpacity={0.7}>
           <IconBack />
         </TouchableOpacity>
@@ -873,7 +870,7 @@ NT Albey - Votre argent, partout, tout le temps`;
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: Math.max(insets.bottom, 20) + 24 }]}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -886,6 +883,29 @@ NT Albey - Votre argent, partout, tout le temps`;
           />
         }
       >
+        {isOfflineCache && (
+          <View style={{ marginHorizontal: 16, marginTop: 12, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 12, backgroundColor: '#FEF3C7', borderWidth: 1, borderColor: '#FDE68A' }}>
+            <Text style={{ fontSize: 12, fontWeight: '700', color: '#92400E', textAlign: 'center' }}>
+              📡 Mode hors-ligne — Dernières transactions synchronisées
+            </Text>
+          </View>
+        )}
+
+        {/* ═══════════ BILAN MENSUEL PREMIUM ═══════════ */}
+        <View style={{ marginHorizontal: 16, marginTop: 14, marginBottom: 4, padding: 14, borderRadius: 18, backgroundColor: '#ECFDF5', borderWidth: 1, borderColor: '#A7F3D0', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <View>
+            <Text style={{ fontSize: 11, fontWeight: '800', color: '#047857', textTransform: 'uppercase', letterSpacing: 0.5 }}>Bilan du mois</Text>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: '#065F46', marginTop: 2 }}>
+              Solde net : {(totalReception - totalDepense >= 0 ? '+ ' : '- ') + Math.abs(totalReception - totalDepense).toLocaleString()} FCFA
+            </Text>
+          </View>
+          <View style={{ backgroundColor: '#FFFFFF', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10 }}>
+            <Text style={{ fontSize: 11, fontWeight: '800', color: '#008933' }}>
+              {totalTransactions} opération{totalTransactions > 1 ? 's' : ''}
+            </Text>
+          </View>
+        </View>
+
         {/* ═══════════ STATS ═══════════ */}
         <View style={styles.statsContainer}>
           <View style={styles.statCard}>
@@ -1041,7 +1061,7 @@ NT Albey - Votre argent, partout, tout le temps`;
         onRequestClose={() => setModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { maxHeight: modalMaxHeight }]}>
+          <View style={[styles.modalContent, { maxHeight: modalMaxHeight, paddingBottom: Math.max(insets.bottom, 20) + 12 }]}>
             <View style={styles.modalDragHandle} />
 
             <View style={styles.modalHeader}>
@@ -1247,7 +1267,7 @@ NT Albey - Votre argent, partout, tout le temps`;
         onRequestClose={() => setFilterModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.filterModalContent}>
+          <View style={[styles.filterModalContent, { paddingBottom: Math.max(insets.bottom, 20) + 16 }]}>
             <View style={styles.modalDragHandle} />
 
             <View style={styles.filterModalHeader}>

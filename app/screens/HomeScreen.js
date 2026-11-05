@@ -1,21 +1,11 @@
 // screens/HomeScreen.js - Version PREMIUM harmonisée
 // ✅ Logique 100% inchangée
 // ✅ PULL-TO-REFRESH
-// ✅ v2 : "Encaisser" retiré → "Points de vente" → "+" Coming Soon
-// ✅ v3 : Cards Solde + Téléphone RÉDUITES (230 → 170)
-// ✅ v4 : Actions rapides RÉDUITES + header SUPPRIMÉ
-// ✨ v5 : QR Code du compte en bas (carte compacte)
-// ✨ v6 : QR PERMANENT — régénération AUTO silencieuse toutes les 4 min
-// ✨ v7 : QR SEUL — plus de texte autour (ni eyebrow, ni titre, ni badge)
-//         QR centré, agrandi (150-200px)
-// ✨ v8 : MASCOTTE ALBEY — UNIQUEMENT dans la Balance Card (bas-droite, agrandie)
+// ✨ v27 : TAILLE D'ICÔNE PAR BOUTON (iconSize)
+// ✨ v28 : AJOUT DE L'ICÔNE CUSTOM POUR LES POINTS DE VENTE (point_de_vente.png)
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
-  View,
-  Text,
-  TouchableOpacity,
   StyleSheet,
-  ScrollView,
   Image,
   Platform,
   FlatList,
@@ -24,23 +14,18 @@ import {
   Animated,
   PanResponder,
   Modal,
-  TextInput,
   Linking,
-  KeyboardAvoidingView,
-  Alert,
   RefreshControl,
-  AppState,
+  Vibration,
 } from 'react-native';
 import Svg, { Path, Circle, Rect } from 'react-native-svg';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
-import QRCode from 'react-native-qrcode-svg';
 import MainLayout from '../components/MainLayout';
 import { useTransactions } from '../context/TransactionContext';
 import { API } from '../services/api';
 import { useAuth } from '../context/AuthContext';
-import { useTranslation } from '../context/LanguageContext';
-import { encodeQRData } from '../utils/qrUtils';
+import { useTranslation, TranslatedText as Text, TranslatedTextInput as TextInput, TranslatedAlert as Alert, ThemedView as View, ThemedTouchableOpacity as TouchableOpacity, ThemedScrollView as ScrollView, ThemedKeyboardAvoidingView as KeyboardAvoidingView } from '../context/LanguageContext';
 
 // ═══════════════════════════════════════════════════════════
 // 🎨 PALETTE
@@ -51,21 +36,21 @@ const COLORS = {
   primaryDark:  '#006B28',
   accent:       '#FF6600',
   accentSoft:   '#FFF3E0',
-  textPrimary:  '#0F172A',
-  textSecondary:'#64748B',
-  textMuted:    '#94A3B8',
-  border:       '#E2E8F0',
-  borderSoft:   '#F1F5F9',
+  textPrimary:  '#0B1220',
+  textSecondary:'#5A6474',
+  textMuted:    '#A0A8B4',
+  border:       '#E7EAF0',
+  borderSoft:   '#F3F5F9',
   surface:      '#FFFFFF',
-  surfaceAlt:   '#F8FAFC',
-  background:   '#F1F5F9',
+  surfaceAlt:   '#FAFBFD',
+  background:   '#FFFFFF',
   danger:       '#EF4444',
   dangerSoft:   '#FEE2E2',
   success:      '#10B981',
   successSoft:  '#D1FAE5',
   warning:      '#F59E0B',
   warningSoft:  '#FEF3C7',
-  shadow:       '#0F172A',
+  shadow:       '#0B1220',
   iconOrange:   '#FF6600',
   iconBlue:     '#3B82F6',
   iconGreen:    '#008933',
@@ -74,72 +59,95 @@ const COLORS = {
 };
 
 const AUTO_REFRESH_INTERVAL_MS = 5000;
-const QR_AUTO_REGEN_INTERVAL_MS = 4 * 60 * 1000;
+
+const hapticTap = (intensity = 'light') => {
+  if (Platform.OS === 'web') return;
+  try {
+    if (intensity === 'heavy') Vibration.vibrate(20);
+    else if (intensity === 'medium') Vibration.vibrate(12);
+    else Vibration.vibrate(6);
+  } catch (_) {}
+};
 
 // ═══════════════════════════════════════════════════════════
-// 🎯 ICÔNES
+// 🎯 ICÔNES — PNG CUSTOM STYLISÉES
 // ═══════════════════════════════════════════════════════════
-const IconCompteACompte = () => (
-  <Svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-    <Path d="M22 2L11 13" stroke={COLORS.iconOrange} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-    <Path d="M22 2L15 22l-4-9-9-4 20-7z" stroke={COLORS.iconOrange} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-  </Svg>
-);
 
-const IconEnvoiMoiMeme = () => (
-  <Svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-    <Path d="M12 3v12M8 11l4 4 4-4" stroke={COLORS.iconBlue} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-    <Path d="M5 20h14" stroke={COLORS.iconBlue} strokeWidth="2" strokeLinecap="round" />
-  </Svg>
-);
-
-const IconTransfertArgent = () => (
-  <Svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-    <Rect x="4" y="8" width="16" height="12" rx="2" stroke={COLORS.iconGreen} strokeWidth="1.8" />
-    <Path d="M12 4L8 8h8L12 4z" stroke={COLORS.iconGreen} strokeWidth="1.8" strokeLinejoin="round" />
-    <Path d="M9 14l3 3 3-3" stroke={COLORS.accent} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-    <Path d="M12 11v6" stroke={COLORS.accent} strokeWidth="2" strokeLinecap="round" />
-  </Svg>
-);
-
-const IconStore = () => (
-  <Svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-    <Path d="M3 9l1.5-5h15L21 9" stroke={COLORS.iconPurple} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-    <Path d="M3 9v10a1 1 0 001 1h16a1 1 0 001-1V9" stroke={COLORS.iconPurple} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-    <Path d="M3 9a3 3 0 006 0 3 3 0 006 0 3 3 0 006 0" stroke={COLORS.iconPurple} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-    <Rect x="9" y="14" width="6" height="6" rx="1" stroke={COLORS.iconPurple} strokeWidth="1.8" />
-  </Svg>
-);
-
-const IconBoutique = () => (
+const IconCompteACompte = ({ size = 30 }) => (
   <Image
-    source={require('../assets/images/boutique.png')}
-    style={{ width: 26, height: 26, resizeMode: 'contain' }}
+    source={require('../assets/compte_a_compte.png')}
+    style={{ width: size, height: size, resizeMode: 'contain' }}
   />
 );
 
-const IconPlus = () => (
-  <Svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-    <Path d="M12 5v14M5 12h14" stroke={COLORS.textMuted} strokeWidth="2.2" strokeLinecap="round" />
+const IconEnvoiMoiMeme = ({ size = 31 }) => (
+  <Image
+    source={require('../assets/envoi_a_moi_meme.png')}
+    style={{ width: size, height: size, resizeMode: 'contain' }}
+  />
+);
+
+const IconTransfertArgent = ({ size = 32 }) => (
+  <Image
+    source={require("../assets/transfert_dargent.png")}
+    style={{ width: size, height: size, resizeMode: 'contain' }}
+  />
+);
+
+const IconBoutique = ({ size = 30 }) => (
+  <Image
+    source={require('../assets/images/boutique.png')}
+    style={{ width: size, height: size, resizeMode: 'contain' }}
+  />
+);
+
+// ✅ v28 : Nouvelle icône PNG pour les points de vente
+const IconPointDeVente = ({ size = 30 }) => (
+  <Image
+    source={require('../assets/point_de_vente.png')}
+    style={{ width: size, height: size, resizeMode: 'contain' }}
+  />
+);
+
+// ─── Autres icônes SVG (inchangées) ────────────────────────
+const IconPlus = ({ color = COLORS.textMuted, size = 28 }) => (
+  <Image
+    source={require('../assets/bientot.png')}
+    style={{ width: size, height: size, resizeMode: 'contain' }}
+  />
+);
+
+const IconLightning = () => (
+  <Svg width="14" height="14" viewBox="0 0 24 24" fill="#FFD700" stroke="#FFD700" strokeWidth="1.5" strokeLinejoin="round">
+    <Path d="M13 2L4.09 12.97A1 1 0 005 14.5h5.5l-1 7.5L19 11.03A1 1 0 0018 9.5h-5.5l.5-7.5z" />
   </Svg>
 );
 
 const IconEye = ({ visible }) => (
   <Svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-    <Path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" stroke="rgba(255,255,255,0.9)" strokeWidth="1.8" />
-    <Circle cx="12" cy="12" r="3" stroke="rgba(255,255,255,0.9)" strokeWidth="1.8" />
+    {visible ? (
+      <>
+        <Path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" stroke="rgba(255,255,255,0.95)" strokeWidth="1.8" />
+        <Circle cx="12" cy="12" r="3" stroke="rgba(255,255,255,0.95)" strokeWidth="1.8" />
+      </>
+    ) : (
+      <>
+        <Path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24" stroke="rgba(255,255,255,0.95)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        <Path d="M1 1l22 22" stroke="rgba(255,255,255,0.95)" strokeWidth="1.8" strokeLinecap="round" />
+      </>
+    )}
   </Svg>
 );
 
 const IconArrowRight = () => (
   <Svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-    <Path d="M5 12h14M12 5l7 7-7 7" stroke="#FFFFFF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    <Path d="M5 12h14M12 5l7 7-7 7" stroke="#FFFFFF" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
   </Svg>
 );
 
-const IconPhone = () => (
-  <Svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-    <Path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.362 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.574 2.81.7A2 2 0 0122 16.92z" stroke="#FFFFFF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+const IconPhone = ({ color = '#FFFFFF', size = 14 }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.362 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.574 2.81.7A2 2 0 0122 16.92z" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
   </Svg>
 );
 
@@ -150,21 +158,21 @@ const IconSearch = ({ color = COLORS.textMuted }) => (
   </Svg>
 );
 
-const IconClose = () => (
-  <Svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-    <Path d="M18 6L6 18M6 6l12 12" stroke={COLORS.textPrimary} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+const IconClose = ({ color = COLORS.textSecondary, size = 20 }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Path d="M18 6L6 18M6 6l12 12" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
   </Svg>
 );
 
-const IconLocation = ({ color = COLORS.primary }) => (
-  <Svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+const IconLocation = ({ color = COLORS.primary, size = 20 }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Path d="M12 22s8-7.5 8-13a8 8 0 10-16 0c0 5.5 8 13 8 13z" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
     <Circle cx="12" cy="9" r="3" stroke={color} strokeWidth="2" />
   </Svg>
 );
 
-const IconNav = ({ color = '#FFFFFF' }) => (
-  <Svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+const IconNav = ({ color = '#FFFFFF', size = 14 }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Path d="M3 11l18-8-8 18-2-8-8-2z" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
   </Svg>
 );
@@ -174,7 +182,7 @@ const IconNav = ({ color = '#FFFFFF' }) => (
 // ═══════════════════════════════════════════════════════════
 const LogoPattern = () => {
   const { width = 400, height = 800 } = useWindowDimensions();
-  const LOGO_SIZE = 42;
+  const LOGO_SIZE = 38;
   const GAP = 10;
   const STEP = LOGO_SIZE + GAP;
   const cols = Math.ceil(width / STEP) + 1;
@@ -211,14 +219,14 @@ const PhoneBalanceCard = ({ phoneData, fallbackPhone, onRecharge }) => {
   if (!phoneData) {
     return (
       <LinearGradient
-        colors={['#008933', '#00A34D']}
+        colors={['#007B30', '#009D42', '#2AB56A']}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={styles.phoneCard}
       >
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-          <ActivityIndicator size="large" color="#FFFFFF" />
-          <Text style={{ color: 'rgba(255,255,255,0.8)', marginTop: 8 }}>{t('common.loading')}</Text>
+          <ActivityIndicator size="small" color="#FFFFFF" />
+          <Text style={{ color: 'rgba(255,255,255,0.85)', marginTop: 8, fontSize: 12, fontWeight: '500' }}>{t('common.loading')}</Text>
         </View>
       </LinearGradient>
     );
@@ -226,19 +234,26 @@ const PhoneBalanceCard = ({ phoneData, fallbackPhone, onRecharge }) => {
 
   return (
     <LinearGradient
-      colors={['#008933', '#00A34D']}
+      colors={['#063D21', '#007D32', '#00A847']}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 1 }}
       style={styles.phoneCard}
     >
       <View style={styles.cardDecorCircle} pointerEvents="none" />
+      <View style={styles.cardDecorCircle2} pointerEvents="none" />
 
       <View style={styles.phoneCardTop}>
         <View style={styles.phoneCardHeader}>
-          <View style={styles.phoneCardIcon}><IconPhone /></View>
+          <View style={styles.phoneCardIcon}><IconPhone color="#FFFFFF" size={15} /></View>
           <Text style={styles.phoneCardTitle}>{t('home.phoneBalance')}</Text>
         </View>
-        <Text style={styles.phoneNumber}>{displayPhone}</Text>
+        <View style={styles.phoneCardIdentity}>
+          <Text style={styles.phoneNumber}>{displayPhone}</Text>
+          <View style={styles.accountStatus}>
+            <View style={styles.accountStatusDot} />
+            <Text style={styles.accountStatusText}>ACTIF</Text>
+          </View>
+        </View>
       </View>
 
       <View style={styles.phoneCardGrid}>
@@ -294,32 +309,19 @@ const PhoneBalanceCard = ({ phoneData, fallbackPhone, onRecharge }) => {
 };
 
 // ═══════════════════════════════════════════════════════════
-// ✨ CARTE QR CODE — QR SEUL (mascotte retirée)
-// ═══════════════════════════════════════════════════════════
-const MyQRCard = ({ qrValue, qrSize }) => {
-  return (
-    <View style={styles.qrCard}>
-      <QRCode
-        value={qrValue}
-        size={qrSize}
-        color={COLORS.textPrimary}
-        backgroundColor="#FFFFFF"
-        logo={require('../assets/images/logo-carre.png')}
-        logoSize={qrSize * 0.20}
-        logoBackgroundColor="#FFFFFF"
-        logoBorderRadius={10}
-        logoMargin={4}
-      />
-    </View>
-  );
-};
-
-// ═══════════════════════════════════════════════════════════
 // 🏪 MODAL POINTS DE VENTE
 // ═══════════════════════════════════════════════════════════
 const PointOfSaleModal = ({ visible, onClose, points = [], isLoading = false }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const insets = useSafeAreaInsetsSafe();
+  const sheetTranslateY = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (!visible) {
+      setSearchQuery('');
+      sheetTranslateY.setValue(0);
+    }
+  }, [visible, sheetTranslateY]);
 
   const filtered = useMemo(() => {
     if (!searchQuery.trim()) return points;
@@ -330,7 +332,30 @@ const PointOfSaleModal = ({ visible, onClose, points = [], isLoading = false }) 
     );
   }, [points, searchQuery]);
 
+  const sheetPanResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, g) => g.dy > 8 && Math.abs(g.dy) > Math.abs(g.dx),
+      onPanResponderMove: (_, g) => {
+        if (g.dy > 0) sheetTranslateY.setValue(g.dy);
+      },
+      onPanResponderRelease: (_, g) => {
+        if (g.dy > 120 || g.vy > 0.8) {
+          Animated.timing(sheetTranslateY, {
+            toValue: 800,
+            duration: 200,
+            useNativeDriver: true,
+          }).start(() => {
+            onClose();
+          });
+        } else {
+          Animated.spring(sheetTranslateY, { toValue: 0, useNativeDriver: true }).start();
+        }
+      },
+    })
+  ).current;
+
   const handleNavigate = (point) => {
+    hapticTap('light');
     if (!point.lat || !point.lng) {
       Alert.alert('Information', 'Coordonnées GPS non disponibles pour ce point de vente.');
       return;
@@ -355,98 +380,107 @@ const PointOfSaleModal = ({ visible, onClose, points = [], isLoading = false }) 
     >
       <View style={styles.psModalOverlay}>
         <TouchableOpacity style={styles.psModalBackdrop} onPress={onClose} activeOpacity={1} />
-
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={styles.psModalWrapper}
+        <Animated.View
+          style={[
+            styles.psSheetContent,
+            {
+              maxHeight: '88%',
+              paddingBottom: insets.bottom > 0 ? insets.bottom + 16 : 24,
+              transform: [{ translateY: sheetTranslateY }],
+            },
+          ]}
+          {...sheetPanResponder.panHandlers}
         >
-          <View style={[styles.psModalContent, { paddingBottom: insets.bottom > 0 ? insets.bottom + 12 : 20 }]}>
-            <View style={styles.psDragHandle} />
+          <View style={styles.psDragHandle} />
 
-            <View style={styles.psHeader}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.psTitle}>Points de vente</Text>
-                <Text style={styles.psSubtitle}>
-                  {isLoading
-                    ? 'Chargement…'
-                    : `${filtered.length} ${filtered.length > 1 ? 'agences disponibles' : 'agence disponible'}`}
-                </Text>
-              </View>
-              <TouchableOpacity onPress={onClose} style={styles.psCloseButton} activeOpacity={0.7}>
-                <IconClose />
-              </TouchableOpacity>
+          <View style={styles.psHeader}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.psTitle}>Points de vente</Text>
+              <Text style={styles.psSubtitle}>
+                {isLoading
+                  ? 'Chargement…'
+                  : `${filtered.length} ${filtered.length > 1 ? 'agences disponibles' : 'agence disponible'}`}
+              </Text>
             </View>
+            <TouchableOpacity onPress={onClose} style={styles.psCloseBtn} activeOpacity={0.7}>
+              <IconClose />
+            </TouchableOpacity>
+          </View>
 
-            <View style={styles.psSearchWrapper}>
-              <View style={styles.psSearchIcon}><IconSearch /></View>
-              <TextInput
-                style={styles.psSearchInput}
-                placeholder="Rechercher une agence, une ville…"
-                placeholderTextColor={COLORS.textMuted}
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-                returnKeyType="search"
-                autoCorrect={false}
-              />
-              {searchQuery !== '' && (
-                <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.psSearchClear} activeOpacity={0.7}>
-                  <Text style={styles.psSearchClearText}>✕</Text>
-                </TouchableOpacity>
-              )}
+          <View style={styles.psSearchRow}>
+            <View style={styles.psSearchIconWrap}>
+              <IconSearch />
             </View>
-
-            {isLoading ? (
-              <View style={styles.psLoadingContainer}>
-                <ActivityIndicator size="large" color={COLORS.primary} />
-                <Text style={styles.psLoadingText}>Chargement des agences…</Text>
-              </View>
-            ) : filtered.length === 0 ? (
-              <View style={styles.psEmptyContainer}>
-                <View style={styles.psEmptyIconWrap}><IconStore /></View>
-                <Text style={styles.psEmptyTitle}>Aucun point de vente</Text>
-                <Text style={styles.psEmptyText}>
-                  {searchQuery
-                    ? 'Aucune agence ne correspond à votre recherche.'
-                    : 'Aucune agence disponible pour le moment.'}
-                </Text>
-              </View>
-            ) : (
-              <ScrollView
-                showsVerticalScrollIndicator={false}
-                contentContainerStyle={styles.psListContent}
-                keyboardShouldPersistTaps="handled"
+            <TextInput
+              style={styles.psSearchInput}
+              placeholder="Rechercher une agence, une ville…"
+              placeholderTextColor={COLORS.textMuted}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              returnKeyType="search"
+              autoCorrect={false}
+            />
+            {searchQuery !== '' && (
+              <TouchableOpacity
+                onPress={() => setSearchQuery('')}
+                style={styles.psSearchClear}
+                activeOpacity={0.7}
               >
-                {filtered.map((point, idx) => (
-                  <View key={String(point.id ?? idx)} style={styles.psCard}>
-                    <View style={styles.psCardLeft}>
-                      <View style={styles.psCardIconWrap}>
-                        <IconLocation color={COLORS.primary} />
-                      </View>
-                    </View>
-                    <View style={styles.psCardBody}>
-                      <Text style={styles.psCardName} numberOfLines={1}>
-                        {point.name || 'Agence NT Albey'}
-                      </Text>
-                      <Text style={styles.psCardAddress} numberOfLines={1}>
-                        {point.address || 'Adresse non disponible'}
-                      </Text>
-                      <View style={styles.psCardActions}>
-                        <TouchableOpacity
-                          style={styles.psCardBtn}
-                          onPress={() => handleNavigate(point)}
-                          activeOpacity={0.85}
-                        >
-                          <IconNav />
-                          <Text style={styles.psCardBtnText}>Y aller</Text>
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                  </View>
-                ))}
-              </ScrollView>
+                <Text style={styles.psSearchClearText}>✕</Text>
+              </TouchableOpacity>
             )}
           </View>
-        </KeyboardAvoidingView>
+
+          {isLoading ? (
+            <View style={styles.psLoadingContainer}>
+              <ActivityIndicator size="large" color={COLORS.primary} />
+              <Text style={styles.psLoadingText}>Chargement des agences…</Text>
+            </View>
+          ) : filtered.length === 0 ? (
+            <View style={styles.psEmptyContainer}>
+              <View style={styles.psEmptyIconWrap}>
+                <IconPointDeVente size={28} />
+              </View>
+              <Text style={styles.psEmptyTitle}>Aucun point de vente</Text>
+              <Text style={styles.psEmptyText}>
+                {searchQuery
+                  ? 'Aucune agence ne correspond à votre recherche.'
+                  : 'Aucune agence disponible pour le moment.'}
+              </Text>
+            </View>
+          ) : (
+            <FlatList
+              data={filtered}
+              keyExtractor={(item, idx) => String(item.id ?? idx)}
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.psListContent}
+              keyboardShouldPersistTaps="handled"
+              renderItem={({ item }) => (
+                <View style={styles.psCard}>
+                  <View style={styles.psCardAvatar}>
+                    <IconLocation color={COLORS.primary} size={20} />
+                  </View>
+                  <View style={styles.psCardBody}>
+                    <Text style={styles.psCardName} numberOfLines={1}>
+                      {item.name || 'Agence NT Albey'}
+                    </Text>
+                    <Text style={styles.psCardAddress} numberOfLines={1}>
+                      {item.address || 'Adresse non disponible'}
+                    </Text>
+                    <TouchableOpacity
+                      style={styles.psCardBtn}
+                      onPress={() => handleNavigate(item)}
+                      activeOpacity={0.85}
+                    >
+                      <IconNav size={12} />
+                      <Text style={styles.psCardBtnText}>Y aller</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+            />
+          )}
+        </Animated.View>
       </View>
     </Modal>
   );
@@ -462,6 +496,58 @@ function useSafeAreaInsetsSafe() {
 }
 
 // ═══════════════════════════════════════════════════════════
+// ⚡ ACTION ITEM — MICRO-ANIMATION + ICONSIZE PAR BOUTON
+// ═══════════════════════════════════════════════════════════
+const ActionItem = ({ item, onPress }) => {
+  const scale = useRef(new Animated.Value(1)).current;
+
+  const handlePressIn = () => {
+    Animated.timing(scale, {
+      toValue: 0.92,
+      duration: 90,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const handlePressOut = () => {
+    Animated.spring(scale, {
+      toValue: 1,
+      friction: 4,
+      tension: 120,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const IconComponent = item.Icon;
+  const iconProps = item.iconSize ? { size: item.iconSize } : {};
+
+  return (
+    <TouchableOpacity
+      style={styles.actionItem}
+      onPress={onPress}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
+      activeOpacity={0.85}
+    >
+      <Animated.View
+        style={[
+          styles.actionIconWrapper,
+          item.bgStyle,
+          { transform: [{ scale }] },
+        ]}
+      >
+        <View style={[styles.actionIconHalo, item.haloStyle]}>
+          <IconComponent {...iconProps} />
+        </View>
+      </Animated.View>
+      <Text style={styles.actionLabel} numberOfLines={2}>
+        {item.label}
+      </Text>
+    </TouchableOpacity>
+  );
+};
+
+// ═══════════════════════════════════════════════════════════
 // 🏠 HOME SCREEN
 // ═══════════════════════════════════════════════════════════
 export default function HomeScreen({ navigation }) {
@@ -475,12 +561,7 @@ export default function HomeScreen({ navigation }) {
   const flatListRef = useRef(null);
   const scrollViewRef = useRef(null);
 
-  const {
-    balance,
-    refreshWallet,
-    wallet,
-    isLoading: walletLoading,
-  } = useTransactions();
+  const { balance, refreshWallet, wallet, isLoading: walletLoading } = useTransactions();
 
   const [phoneData, setPhoneData] = useState(null);
   const [isPhoneLoading, setIsPhoneLoading] = useState(true);
@@ -493,16 +574,7 @@ export default function HomeScreen({ navigation }) {
 
   const [refreshing, setRefreshing] = useState(false);
 
-  // ✨ État QR Code
-  const [qrValue, setQrValue] = useState('');
-  const qrInitializedRef = useRef(false);
-  const qrRegenTimerRef = useRef(null);
-  const appStateRef = useRef(AppState.currentState);
-
-  // ✨ QR plus grand (puisqu'il est seul, sans texte)
-  const qrSize = Math.min(200, Math.max(150, Math.floor(width * 0.5)));
-
-  const chatButtonSize = 56;
+  const chatButtonSize = 54;
   const pan = useRef(new Animated.ValueXY({ x: width - chatButtonSize - 20, y: height - 200 })).current;
   const isDragging = useRef(false);
 
@@ -542,67 +614,6 @@ export default function HomeScreen({ navigation }) {
       return () => clearInterval(interval);
     }, [refreshWallet])
   );
-
-  const generateMyQR = useCallback((user) => {
-    if (!user?.phone) return;
-    try {
-      const encrypted = encodeQRData({
-        type: 'ntalbey',
-        subtype: 'receive',
-        phone: String(user.phone).replace(/\s/g, '').replace(/^\+?227/, ''),
-        name: user.name || undefined,
-      });
-      setQrValue(encrypted);
-    } catch (e) {
-      if (__DEV__) console.log('❌ [HomeScreen] Erreur génération QR:', e?.message);
-    }
-  }, []);
-
-  // Génération initiale (une seule fois)
-  useEffect(() => {
-    if (!qrInitializedRef.current && userPhone && userName) {
-      qrInitializedRef.current = true;
-      generateMyQR({ name: userName, phone: userPhone });
-    }
-  }, [userPhone, userName, generateMyQR]);
-
-  // ✨ Régénération AUTOMATIQUE toutes les 4 minutes
-  useEffect(() => {
-    if (!userPhone) return;
-
-    if (qrRegenTimerRef.current) {
-      clearInterval(qrRegenTimerRef.current);
-    }
-
-    qrRegenTimerRef.current = setInterval(() => {
-      generateMyQR({ name: userName, phone: userPhone });
-    }, QR_AUTO_REGEN_INTERVAL_MS);
-
-    return () => {
-      if (qrRegenTimerRef.current) {
-        clearInterval(qrRegenTimerRef.current);
-        qrRegenTimerRef.current = null;
-      }
-    };
-  }, [userPhone, userName, generateMyQR]);
-
-  // ✨ Régénération IMMÉDIATE au retour au premier plan
-  useEffect(() => {
-    const subscription = AppState.addEventListener('change', (nextState) => {
-      const prevState = appStateRef.current;
-      appStateRef.current = nextState;
-
-      if (prevState !== 'active' && nextState === 'active') {
-        if (userPhone && userName) {
-          generateMyQR({ name: userName, phone: userPhone });
-        }
-      }
-    });
-
-    return () => {
-      subscription.remove();
-    };
-  }, [userPhone, userName, generateMyQR]);
 
   const loadUserAndPhoneData = useCallback(async () => {
     try {
@@ -718,10 +729,7 @@ export default function HomeScreen({ navigation }) {
     if (refreshing) return;
     setRefreshing(true);
     try {
-      await Promise.all([
-        refreshWallet(),
-        loadUserAndPhoneData(),
-      ]);
+      await Promise.all([refreshWallet(), loadUserAndPhoneData()]);
     } catch (e) {
       if (__DEV__) console.log('⚠️ [HomeScreen] Erreur pull-to-refresh:', e?.message);
     } finally {
@@ -734,13 +742,106 @@ export default function HomeScreen({ navigation }) {
     navigation.replace('Login');
   };
 
+  // ═══════════════════════════════════════════════════════════
+  // ⚡ QUICK ACTIONS — STYLES + ICONSIZE
+  // ═══════════════════════════════════════════════════════════
   const quickActions = [
-    { key: 'boutique',      label: t('home.shop'),             Icon: IconBoutique,        screen: 'Shop',                bg: `${COLORS.iconOrange}15` },
-    { key: 'compteacompte', label: t('home.accountToAccount'), Icon: IconCompteACompte,   screen: 'SendMoney',           bg: `${COLORS.iconOrange}15` },
-    { key: 'envoimoi',      label: t('home.selfTransfer'),     Icon: IconEnvoiMoiMeme,    screen: 'Withdraw',            bg: `${COLORS.iconBlue}15`   },
-    { key: 'transfert',     label: t('home.moneyTransfer'),    Icon: IconTransfertArgent, screen: 'TransferToAgency',    bg: `${COLORS.iconGreen}15`  },
-    { key: 'pointdevente',  label: 'Points de vente',          Icon: IconStore,           action: handleOpenPointsModal, bg: `${COLORS.iconPurple}15` },
-    { key: 'comingsoon',    label: 'Bientôt...',               Icon: IconPlus,            action: handleComingSoon,      bg: `${COLORS.textMuted}12`  },
+    {
+      key: 'boutique',
+      label: 'Boutique NT',
+      Icon: IconBoutique,
+      iconSize: 36,
+      screen: 'Shop',
+      bgStyle: {
+        backgroundColor: '#FFF7ED',
+        borderColor: '#FFEDD5',
+        ...Platform.select({
+          ios: { shadowColor: '#FF6600', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.14, shadowRadius: 8 },
+          android: { elevation: 2 },
+        }),
+      },
+      haloStyle: { backgroundColor: 'rgba(255, 102, 0, 0.08)' },
+    },
+    {
+      key: 'compteacompte',
+      label: 'Compte à Compte',
+      Icon: IconCompteACompte,
+      iconSize: 36,
+      screen: 'SendMoney',
+      bgStyle: {
+        backgroundColor: '#FFF7ED',
+        borderColor: '#FFEDD5',
+        ...Platform.select({
+          ios: { shadowColor: '#FF6600', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.14, shadowRadius: 8 },
+          android: { elevation: 2 },
+        }),
+      },
+      haloStyle: { backgroundColor: 'rgba(255, 102, 0, 0.08)' },
+    },
+    {
+      key: 'envoimoi',
+      label: 'Envoi à moi même',
+      Icon: IconEnvoiMoiMeme,
+      iconSize: 36,
+      screen: 'Withdraw',
+      bgStyle: {
+        backgroundColor: '#EFF6FF',
+        borderColor: '#DBEAFE',
+        ...Platform.select({
+          ios: { shadowColor: '#3B82F6', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.14, shadowRadius: 8 },
+          android: { elevation: 2 },
+        }),
+      },
+      haloStyle: { backgroundColor: 'rgba(59, 130, 246, 0.08)' },
+    },
+    {
+      key: 'transfert',
+      label: "Transfert d'argent",
+      Icon: IconTransfertArgent,
+      iconSize: 36,
+      screen: 'TransferToAgency',
+      bgStyle: {
+        backgroundColor: '#ECFDF5',
+        borderColor: '#D1FAE5',
+        ...Platform.select({
+          ios: { shadowColor: '#008933', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.14, shadowRadius: 8 },
+          android: { elevation: 2 },
+        }),
+      },
+      haloStyle: { backgroundColor: 'rgba(0, 137, 51, 0.08)' },
+    },
+    {
+      key: 'pointdevente',
+      label: 'Points de vente',
+      Icon: IconPointDeVente, // ✅ v28 : Nouvelle icône custom
+      iconSize: 36,
+      action: handleOpenPointsModal,
+      bgStyle: {
+        backgroundColor: '#F5F3FF',
+        borderColor: '#EDE9FE',
+        ...Platform.select({
+          ios: { shadowColor: '#8B5CF6', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.14, shadowRadius: 8 },
+          android: { elevation: 2 },
+        }),
+      },
+      haloStyle: { backgroundColor: 'rgba(139, 92, 246, 0.08)' },
+    },
+    {
+      key: 'comingsoon',
+      label: 'Bientôt...',
+      Icon: IconPlus,
+      iconSize: 36,
+      action: handleComingSoon,
+      bgStyle: {
+        backgroundColor: '#F8FAFC',
+        borderColor: '#F1F5F9',
+        ...Platform.select({
+          ios: { shadowColor: '#64748B', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 8 },
+          android: { elevation: 1 },
+        }),
+      },
+      haloStyle: { backgroundColor: 'rgba(148, 163, 184, 0.08)' },
+    },
   ];
 
   const slides = [
@@ -748,32 +849,19 @@ export default function HomeScreen({ navigation }) {
       id: 'balance',
       component: (
         <LinearGradient
-          colors={['#008933', '#00A34D']}
+          colors={['#063D21', '#007D32', '#00A847']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={styles.balanceCard}
         >
           <View style={styles.cardDecorCircle} pointerEvents="none" />
-
-          {/* ✨ Mascotte Albey — coin bas-droite, agrandie */}
-          <Image
-            source={require('../assets/mascotte.png')}
-            style={styles.balanceMascot}
-            resizeMode="contain"
-          />
+          <View style={styles.cardDecorCircle2} pointerEvents="none" />
 
           <View style={styles.balanceTop}>
             <View style={{ flex: 1 }}>
               <Text style={styles.balanceLabel}>
                 {t('home.balanceAvailable')}
                 {wallet?.currency_code ? ` • ${wallet.currency_code}` : ''}
-              </Text>
-              <Text style={styles.balanceAmount}>
-                {walletLoading && !balance
-                  ? '• • • • •'
-                  : balanceVisible
-                    ? `${balance.toLocaleString('fr-FR')} FCFA`
-                    : '• • • • •'}
               </Text>
             </View>
             <TouchableOpacity
@@ -785,10 +873,25 @@ export default function HomeScreen({ navigation }) {
             </TouchableOpacity>
           </View>
 
+          <View style={styles.balanceAmountRow}>
+            <Text style={styles.balanceAmount} numberOfLines={1}>
+              {walletLoading && !balance
+                ? '•••••'
+                : balanceVisible
+                  ? `${balance.toLocaleString('fr-FR')}`
+                  : '••••••'}
+            </Text>
+            {balanceVisible && <Text style={styles.balanceCurrency}>FCFA</Text>}
+          </View>
+
           <View style={styles.balanceBottom}>
             <View style={styles.accountInfo}>
               <Text style={styles.accountLabel}>{t('home.accountHolder')}</Text>
               <Text style={styles.accountNumber} numberOfLines={1}>{userName}</Text>
+            </View>
+            <View style={styles.accountStatus}>
+              <View style={styles.accountStatusDot} />
+              <Text style={styles.accountStatusText}>ACTIF</Text>
             </View>
           </View>
         </LinearGradient>
@@ -814,7 +917,6 @@ export default function HomeScreen({ navigation }) {
     if (item.screen === 'SendMoney') navigation.navigate('SendMoney');
     else if (item.screen === 'Withdraw') navigation.navigate('Withdraw');
     else if (item.screen === 'TransferToAgency') navigation.navigate('TransferToAgency');
-    else if (item.screen === 'CashIn') navigation.navigate('CashIn');
     else if (item.screen === 'Shop') navigation.navigate('Shop');
   };
 
@@ -826,8 +928,6 @@ export default function HomeScreen({ navigation }) {
   return (
     <MainLayout activeScreen="Home" onLogout={handleLogout}>
       <View style={styles.homeContainer}>
-        <LogoPattern />
-
         <ScrollView
           ref={scrollViewRef}
           showsVerticalScrollIndicator={false}
@@ -873,33 +973,25 @@ export default function HomeScreen({ navigation }) {
             </View>
           </View>
 
-          {/* ═══ ACTIONS RAPIDES ═══ */}
-          <View style={styles.actionsWrapper}>
-            <View style={styles.actionsGrid}>
-              {quickActions.map((item) => (
-                <TouchableOpacity
-                  key={item.key}
-                  style={styles.actionItem}
-                  onPress={() => handlePress(item)}
-                  activeOpacity={0.7}
-                >
-                  <View style={[styles.actionIconWrapper, { backgroundColor: item.bg }]}>
-                    <item.Icon />
-                  </View>
-                  <Text style={styles.actionLabel} numberOfLines={2}>
-                    {item.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+          {/* ═══ EN-TÊTE ACTIONS RAPIDES ═══ */}
+          <View style={styles.quickActionsHeader}>
+            <View style={styles.quickActionsHeading}>
+              <Text style={styles.quickActionsTitle}>Actions rapides</Text>
             </View>
           </View>
 
-          {/* ✨ MON QR CODE — QR SEUL */}
-          {qrValue && (
-            <View style={styles.qrSection}>
-              <MyQRCard qrValue={qrValue} qrSize={qrSize} />
+          {/* ═══ GRILLE ACTIONS RAPIDES ═══ */}
+          <View style={styles.actionsWrapper}>
+            <View style={styles.actionsGrid}>
+              {quickActions.map((item) => (
+                <ActionItem
+                  key={item.key}
+                  item={item}
+                  onPress={() => handlePress(item)}
+                />
+              ))}
             </View>
-          )}
+          </View>
         </ScrollView>
 
         {/* ═══ CHAT BUTTON ═══ */}
@@ -908,15 +1000,11 @@ export default function HomeScreen({ navigation }) {
           {...panResponder.panHandlers}
         >
           <View style={styles.chatButton}>
-            <Svg width="26" height="26" viewBox="0 0 24 24" fill="none">
-              <Path
-                d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2v10z"
-                stroke="#FFFFFF"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </Svg>
+            <Image
+              source={require('../assets/support.png')}
+              style={{ width: 38, height: 38 }}
+              resizeMode="contain"
+            />
           </View>
         </Animated.View>
 
@@ -936,161 +1024,268 @@ export default function HomeScreen({ navigation }) {
 // 🎨 STYLES
 // ═══════════════════════════════════════════════════════════
 const styles = StyleSheet.create({
-  homeContainer: { flex: 1, position: 'relative' },
-  scrollContent: { paddingBottom: 100, paddingTop: 12 },
+  homeContainer: { flex: 1, position: 'relative', backgroundColor: '#F6F8F7' },
+  scrollContent: { paddingBottom: 105, paddingTop: 12 },
 
-  // Pattern
   patternContainer: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 0, overflow: 'hidden' },
   patternGrid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 4, paddingTop: 4 },
-  patternLogo: { width: 42, height: 42, marginRight: 10, marginBottom: 10, opacity: 0.045 },
+  patternLogo: { width: 38, height: 38, marginRight: 10, marginBottom: 10, opacity: 0.045 },
 
-  // Carousel
   carouselContainer: { position: 'relative', zIndex: 1 },
-  paginationContainer: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 10, gap: 6 },
-  paginationDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: COLORS.border },
+  paginationContainer: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 12, gap: 6 },
+  paginationDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#D6DDD8' },
   paginationDotActive: { width: 22, height: 6, borderRadius: 3, backgroundColor: COLORS.primary },
 
-  // Balance card
+  // ═══ BALANCE CARD — 220px ═══
   balanceCard: {
-    borderRadius: 22,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    height: 170,
+    borderRadius: 26,
+    paddingHorizontal: 24,
+    paddingVertical: 19,
+    height: 210,
     justifyContent: 'space-between',
     width: '100%',
     overflow: 'hidden',
     position: 'relative',
     ...Platform.select({
-      ios: { shadowColor: COLORS.primary, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.28, shadowRadius: 16 },
-      android: { elevation: 8 },
+      ios: {
+        shadowColor: '#006B28',
+        shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: 0.22,
+        shadowRadius: 20,
+      },
+      android: { elevation: 11 },
     }),
   },
   cardDecorCircle: {
-    position: 'absolute', top: -60, right: -40,
-    width: 180, height: 180, borderRadius: 90,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    position: 'absolute', top: -65, right: -55,
+    width: 210, height: 210, borderRadius: 105,
+    backgroundColor: 'rgba(255,255,255,0.10)',
   },
-  // ✨ Mascotte Albey dans la Balance Card (agrandie 76 → 110)
-  balanceMascot: {
-    position: 'absolute',
-    right: 10 ,
-    bottom: 0,
-    width: 120,
-    height: 120,
-    zIndex: 2,
+  cardDecorCircle2: {
+    position: 'absolute', bottom: -85, left: -65,
+    width: 190, height: 190, borderRadius: 95,
+    backgroundColor: 'rgba(255,255,255,0.06)',
   },
   balanceTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   balanceLabel: {
-    color: 'rgba(255,255,255,0.85)', fontSize: 11, fontWeight: '600',
-    letterSpacing: 0.6, textTransform: 'uppercase',
+    color: 'rgba(255,255,255,0.9)', fontSize: 11.5, fontWeight: '700',
+    letterSpacing: 1, textTransform: 'uppercase',
   },
-  balanceAmount: { color: '#FFFFFF', fontSize: 26, fontWeight: '800', letterSpacing: -0.6, marginTop: 4 },
+  balanceAmountRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 8,
+    marginTop: -4,
+  },
+  balanceAmount: {
+    flexShrink: 1,
+    color: '#FFFFFF', fontSize: 38, fontWeight: '800',
+    letterSpacing: -1.2,
+  },
+  balanceCurrency: {
+    color: 'rgba(255,255,255,0.85)', fontSize: 14,
+    fontWeight: '700', letterSpacing: 1.2,
+  },
   eyeButton: {
-    width: 34, height: 34, borderRadius: 11,
-    backgroundColor: 'rgba(255,255,255,0.18)',
+    width: 42, height: 42, borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.2)',
     alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)',
   },
   balanceBottom: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingTop: 10, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.18)',
+    paddingTop: 16, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.22)',
   },
   accountInfo: { flex: 1 },
-  accountLabel: { color: 'rgba(255,255,255,0.75)', fontSize: 10, fontWeight: '500', letterSpacing: 0.3 },
-  accountNumber: { color: '#FFFFFF', fontSize: 13, fontWeight: '700', marginTop: 2, letterSpacing: 0.3 },
+  accountLabel: {
+    color: 'rgba(255,255,255,0.8)', fontSize: 10.5,
+    fontWeight: '600', letterSpacing: 0.65, textTransform: 'uppercase',
+  },
+  accountNumber: {
+    color: '#FFFFFF', fontSize: 15,
+    fontWeight: '800', marginTop: 4, letterSpacing: 0.35,
+  },
+  accountStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+  },
+  accountStatusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#A7F3D0',
+  },
+  accountStatusText: {
+    color: '#FFFFFF',
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.7,
+  },
 
-  // Phone card
+  // ═══ PHONE CARD — 220px ═══
   phoneCard: {
-    borderRadius: 22,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    borderRadius: 26,
+    paddingHorizontal: 24,
+    paddingVertical: 19,
     width: '100%',
-    height: 170,
+    height: 210,
     justifyContent: 'space-between',
     overflow: 'hidden',
     position: 'relative',
     ...Platform.select({
-      ios: { shadowColor: COLORS.primary, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.28, shadowRadius: 16 },
-      android: { elevation: 8 },
+      ios: {
+        shadowColor: COLORS.primary,
+        shadowOffset: { width: 0, height: 9 },
+        shadowOpacity: 0.3,
+        shadowRadius: 17,
+      },
+      android: { elevation: 11 },
     }),
   },
-  phoneCardTop: { marginBottom: 2 },
-  phoneCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 3 },
+  phoneCardTop: { marginBottom: 3 },
+  phoneCardHeader: {
+    flexDirection: 'row', alignItems: 'center',
+    gap: 7, marginBottom: 3,
+  },
   phoneCardIcon: {
-    width: 20, height: 20, borderRadius: 7,
-    backgroundColor: 'rgba(255,255,255,0.18)',
+    width: 28, height: 28, borderRadius: 9,
+    backgroundColor: 'rgba(255,255,255,0.2)',
     alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)',
   },
   phoneCardTitle: {
-    color: 'rgba(255,255,255,0.85)', fontSize: 10, fontWeight: '600',
-    letterSpacing: 0.6, textTransform: 'uppercase',
+    color: 'rgba(255,255,255,0.92)', fontSize: 10.5,
+    fontWeight: '700', letterSpacing: 0.85, textTransform: 'uppercase',
   },
-  phoneNumber: { color: '#FFFFFF', fontSize: 16, fontWeight: '800', letterSpacing: 0.8, marginTop: 1 },
+  phoneNumber: {
+    color: '#FFFFFF', fontSize: 15, fontWeight: '800',
+    letterSpacing: 0.65, marginTop: 3,
+  },
+  phoneCardIdentity: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 2,
+  },
   phoneCardGrid: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingVertical: 3, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.15)',
+    paddingVertical: 5, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.22)',
   },
   phoneCardItem: { flex: 1, alignItems: 'center' },
-  phoneCardItemDivider: { width: 1, height: 18, backgroundColor: 'rgba(255,255,255,0.15)' },
+  phoneCardItemDivider: { width: 1, height: 22, backgroundColor: 'rgba(255,255,255,0.22)' },
   phoneCardItemLabel: {
-    color: 'rgba(255,255,255,0.7)', fontSize: 8, fontWeight: '600',
-    marginBottom: 1, letterSpacing: 0.2, textTransform: 'uppercase',
+    color: 'rgba(255,255,255,0.85)', fontSize: 8.5,
+    fontWeight: '800', marginBottom: 1.5,
+    letterSpacing: 0.35, textTransform: 'uppercase',
   },
-  phoneCardItemValue: { color: '#FFFFFF', fontSize: 11, fontWeight: '800' },
-  phoneCardItemUnit: { fontSize: 8, fontWeight: '500', color: 'rgba(255,255,255,0.65)' },
+  phoneCardItemValue: { color: '#FFFFFF', fontSize: 12, fontWeight: '800', letterSpacing: -0.1 },
+  phoneCardItemUnit: { fontSize: 8.5, fontWeight: '600', color: 'rgba(255,255,255,0.75)' },
   phoneCardRecharge: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    backgroundColor: 'rgba(255,255,255,0.22)',
-    paddingVertical: 5, paddingHorizontal: 12, borderRadius: 8, marginTop: 2,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
+    backgroundColor: 'rgba(255,255,255,0.25)',
+    height: 30, paddingHorizontal: 15, borderRadius: 10,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.28)',
+    marginTop: 3,
   },
-  phoneCardRechargeText: { color: '#FFFFFF', fontSize: 11, fontWeight: '700', letterSpacing: 0.3 },
+  phoneCardRechargeText: {
+    color: '#FFFFFF', fontSize: 11.5,
+    fontWeight: '800', letterSpacing: 0.35,
+  },
 
-  // Actions rapides
-  actionsWrapper: { paddingHorizontal: 16, marginTop: 16 },
+  // ═══ EN-TÊTE ACTIONS RAPIDES ═══
+  quickActionsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    marginTop: 28,
+    marginBottom: 12,
+    gap: 9,
+  },
+  quickActionsHeading: { flex: 1 },
+  quickActionsTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: COLORS.textPrimary,
+    letterSpacing: -0.25,
+  },
+  quickActionsSubtitle: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    marginTop: 3,
+    fontWeight: '500',
+  },
+  quickActionsBadge: {
+    paddingHorizontal: 10,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#EAF6EE',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  quickActionsBadgeText: {
+    color: COLORS.primary,
+    fontSize: 11,
+    fontWeight: '800',
+  },
+
+  // ═══ GRILLE ACTIONS RAPIDES ═══
+  actionsWrapper: { paddingHorizontal: 16 },
   actionsGrid: {
     flexDirection: 'row', flexWrap: 'wrap',
-    backgroundColor: COLORS.surface,
-    borderRadius: 20,
-    paddingVertical: 8, paddingHorizontal: 2,
-    borderWidth: 1, borderColor: COLORS.borderSoft,
-    ...Platform.select({
-      ios: { shadowColor: COLORS.shadow, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.06, shadowRadius: 14 },
-      android: { elevation: 3 },
-    }),
+    justifyContent: 'space-between',
+    marginHorizontal: -3,
   },
-  actionItem: { width: '33.33%', alignItems: 'center', paddingVertical: 8, paddingHorizontal: 4 },
-  actionIconWrapper: {
-    width: 46, height: 46, borderRadius: 16,
-    alignItems: 'center', justifyContent: 'center',
-    marginBottom: 6, borderWidth: 1, borderColor: COLORS.borderSoft,
-  },
-  actionLabel: {
-    fontSize: 10, color: COLORS.textPrimary, fontWeight: '700',
-    textAlign: 'center', letterSpacing: 0.1,
-    paddingHorizontal: 4, lineHeight: 13,
-  },
-
-  // ✨ QR Card — QR SEUL, centré
-  qrSection: {
-    paddingHorizontal: 16,
-    marginTop: 16,
+  actionItem: {
+    width: '33.33%',
     alignItems: 'center',
-  },
-  qrCard: {
-    backgroundColor: COLORS.surface,
-    borderRadius: 24,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: COLORS.borderSoft,
-    ...Platform.select({
-      ios: { shadowColor: COLORS.shadow, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.08, shadowRadius: 16 },
-      android: { elevation: 4 },
-    }),
+    paddingVertical: 7,
+    paddingHorizontal: 3,
   },
 
-  // Chat button
+  actionIconWrapper: {
+    width: 62,
+    height: 62,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 10,
+    borderWidth: 1,
+    ...Platform.select({
+      ios: { shadowColor: COLORS.shadow, shadowOffset: { width: 0, height: 5 }, shadowOpacity: 0.08, shadowRadius: 10 },
+      android: { elevation: 2 },
+    }),
+  },
+  actionIconHalo: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  actionLabel: {
+    fontSize: 11.5,
+    color: COLORS.textPrimary,
+    fontWeight: '700',
+    textAlign: 'center',
+    letterSpacing: 0.1,
+    paddingHorizontal: 2,
+    lineHeight: 15,
+    minHeight: 30,
+  },
+
+  // ═══ CHAT BUTTON ═══
   chatButtonContainer: { position: 'absolute', top: 0, left: 0, zIndex: 10 },
   chatButton: {
-    width: 56, height: 56, borderRadius: 28,
+    width: 54, height: 54, borderRadius: 27,
     backgroundColor: COLORS.primary,
     alignItems: 'center', justifyContent: 'center',
     borderWidth: 2, borderColor: 'rgba(255,255,255,0.4)',
@@ -1100,88 +1295,193 @@ const styles = StyleSheet.create({
     }),
   },
 
-  // Modal Points de vente
-  psModalOverlay: { flex: 1, backgroundColor: 'rgba(15,23,42,0.55)', justifyContent: 'flex-end' },
+  // ═══════════════════════════════════════════════════════════
+  // MODAL POINTS DE VENTE
+  // ═══════════════════════════════════════════════════════════
+  psModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(11,18,32,0.5)',
+    justifyContent: 'flex-end',
+  },
   psModalBackdrop: { flex: 1 },
-  psModalWrapper: { justifyContent: 'flex-end' },
-  psModalContent: {
+  psSheetContent: {
     backgroundColor: COLORS.surface,
-    borderTopLeftRadius: 28, borderTopRightRadius: 28,
-    paddingHorizontal: 20, paddingTop: 8,
-    maxHeight: '88%', minHeight: 400,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingHorizontal: 20,
+    paddingTop: 8,
   },
   psDragHandle: {
     width: 40, height: 4, borderRadius: 2,
     backgroundColor: COLORS.border,
-    alignSelf: 'center', marginTop: 8, marginBottom: 16,
+    alignSelf: 'center', marginBottom: 20,
   },
-  psHeader: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 16, gap: 12 },
-  psTitle: { fontSize: 22, fontWeight: '800', color: COLORS.textPrimary, letterSpacing: -0.4 },
-  psSubtitle: { fontSize: 13, color: COLORS.textSecondary, marginTop: 3, fontWeight: '500' },
-  psCloseButton: {
-    width: 36, height: 36, borderRadius: 18,
+  psHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 20,
+    gap: 12,
+  },
+  psTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: COLORS.textPrimary,
+    letterSpacing: -0.5,
+  },
+  psSubtitle: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    marginTop: 2,
+    fontWeight: '500',
+  },
+  psCloseBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: COLORS.surfaceAlt,
-    alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1, borderColor: COLORS.borderSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  psSearchWrapper: {
-    flexDirection: 'row', alignItems: 'center',
+
+  psSearchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: COLORS.surfaceAlt,
-    borderRadius: 14, paddingHorizontal: 12, height: 48,
-    borderWidth: 1, borderColor: COLORS.borderSoft, marginBottom: 16,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    marginBottom: 12,
+    overflow: 'hidden',
+    height: 48,
   },
-  psSearchIcon: { marginRight: 8 },
-  psSearchInput: { flex: 1, fontSize: 14, color: COLORS.textPrimary, paddingVertical: 0, fontWeight: '500' },
+  psSearchIconWrap: {
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  psSearchInput: {
+    flex: 1,
+    paddingVertical: 14,
+    paddingHorizontal: 4,
+    fontSize: 15,
+    fontWeight: '600',
+    color: COLORS.textPrimary,
+  },
   psSearchClear: {
-    width: 24, height: 24, borderRadius: 12,
-    backgroundColor: COLORS.border,
-    alignItems: 'center', justifyContent: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  psSearchClearText: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '700' },
-  psListContent: { paddingBottom: 8, gap: 10 },
+  psSearchClearText: {
+    fontSize: 14,
+    color: COLORS.textMuted,
+    fontWeight: '700',
+  },
+
+  psListContent: {
+    paddingBottom: 20,
+    gap: 8,
+  },
+
   psCard: {
     flexDirection: 'row',
+    alignItems: 'flex-start',
     backgroundColor: COLORS.surface,
-    borderRadius: 18, padding: 14,
-    borderWidth: 1, borderColor: COLORS.borderSoft,
+    borderRadius: 18,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: COLORS.borderSoft,
+    gap: 12,
     ...Platform.select({
       ios: { shadowColor: COLORS.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 8 },
       android: { elevation: 1 },
     }),
   },
-  psCardLeft: { marginRight: 12 },
-  psCardIconWrap: {
-    width: 46, height: 46, borderRadius: 14,
+  psCardAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: COLORS.primarySoft,
-    alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1, borderColor: `${COLORS.primary}15`,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.primary + '20',
+    flexShrink: 0,
   },
-  psCardBody: { flex: 1, justifyContent: 'space-between' },
-  psCardName: { fontSize: 15, fontWeight: '800', color: COLORS.textPrimary, letterSpacing: -0.1 },
-  psCardAddress: { fontSize: 12, color: COLORS.textSecondary, marginTop: 2, fontWeight: '500' },
-  psCardActions: { flexDirection: 'row', marginTop: 10 },
+  psCardBody: { flex: 1 },
+  psCardName: {
+    fontSize: 14.5,
+    fontWeight: '800',
+    color: COLORS.textPrimary,
+    letterSpacing: -0.1,
+  },
+  psCardAddress: {
+    fontSize: 11.5,
+    color: COLORS.textSecondary,
+    marginTop: 2,
+    fontWeight: '500',
+  },
   psCardBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 6,
     backgroundColor: COLORS.primary,
-    paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 10,
+    marginTop: 10,
     ...Platform.select({
       ios: { shadowColor: COLORS.primary, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4 },
       android: { elevation: 2 },
     }),
   },
-  psCardBtnText: { color: '#FFFFFF', fontSize: 12, fontWeight: '800', letterSpacing: 0.2 },
-  psLoadingContainer: { alignItems: 'center', paddingVertical: 60 },
-  psLoadingText: { marginTop: 12, color: COLORS.textSecondary, fontSize: 13, fontWeight: '500' },
-  psEmptyContainer: { alignItems: 'center', paddingVertical: 60 },
-  psEmptyIconWrap: {
-    width: 72, height: 72, borderRadius: 24,
-    backgroundColor: COLORS.surfaceAlt,
-    alignItems: 'center', justifyContent: 'center', marginBottom: 16,
+  psCardBtnText: {
+    color: '#FFFFFF',
+    fontSize: 11.5,
+    fontWeight: '800',
+    letterSpacing: 0.2,
   },
-  psEmptyTitle: { fontSize: 16, fontWeight: '800', color: COLORS.textPrimary, marginBottom: 6 },
+
+  psLoadingContainer: {
+    alignItems: 'center',
+    paddingVertical: 40,
+  },
+  psLoadingText: {
+    marginTop: 12,
+    color: COLORS.textSecondary,
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  psEmptyContainer: {
+    alignItems: 'center',
+    paddingVertical: 40,
+    paddingHorizontal: 20,
+  },
+  psEmptyIconWrap: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: COLORS.surfaceAlt,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: COLORS.borderSoft,
+  },
+  psEmptyTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: COLORS.textPrimary,
+    marginBottom: 5,
+  },
   psEmptyText: {
-    fontSize: 13, color: COLORS.textSecondary,
-    textAlign: 'center', paddingHorizontal: 24,
-    lineHeight: 19, fontWeight: '500',
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+    lineHeight: 18,
+    fontWeight: '500',
   },
 });

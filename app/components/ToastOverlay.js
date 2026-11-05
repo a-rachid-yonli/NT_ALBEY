@@ -8,13 +8,13 @@
 import React, { useEffect, useRef } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   Animated,
   Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useToast } from '../context/ToastContext';
+import { TranslatedText as Text } from '../context/LanguageContext';
 
 // ═══════════════════════════════════════════════════════════════
 // 🎨 PALETTE

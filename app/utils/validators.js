@@ -1,5 +1,10 @@
 // utils/validators.js
 // Validations strictes réutilisables
+//
+// ✅ v2 : isValidPin renforcé
+//         → exige au moins une LETTRE et au moins un CHIFFRE
+//         → refuse "aaaaaaaa", "11111111", "........", etc.
+//         → la longueur 8-20 caractères reste inchangée
 
 /* ─── Téléphone Niger Telecom ──────────────────────────────────── */
 export const cleanPhone = (raw) =>
@@ -47,12 +52,29 @@ export const isValidEmail = (raw) => {
 };
 
 /* ─── PIN / mot de passe ────────────────────────────────────────── */
+// ✅ v2 : RENFORCÉ
+//   - Longueur : 8 à 20 caractères
+//   - Doit contenir AU MOINS une lettre
+//   - Doit contenir AU MOINS un chiffre
+//   - Pas uniquement des espaces
+//   → "aaaaaaaa" ❌, "11111111" ❌, "a1a1a1a1" ✅
 export const isValidPin = (pin, { min = 8, max = 20 } = {}) => {
   if (typeof pin !== 'string') return false;
   if (pin.length < min || pin.length > max) return false;
   if (/^\s+$/.test(pin)) return false;
+
+  // ✅ Doit contenir au moins une lettre
+  if (!/[a-zA-Z]/.test(pin)) return false;
+
+  // ✅ Doit contenir au moins un chiffre
+  if (!/\d/.test(pin)) return false;
+
   return true;
 };
+
+// ✅ Helper : message d'erreur cohérent à afficher partout
+export const PIN_HELPER_TEXT =
+  'Le mot de passe doit contenir 8 à 20 caractères, avec au moins une lettre et un chiffre.';
 
 /* ─── Date (YYYY-MM-DD) ─────────────────────────────────────────── */
 export const isValidDate = (raw) => {

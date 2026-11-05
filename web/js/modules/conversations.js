@@ -4,6 +4,7 @@ import { state } from '../services/state.js';
 import { Toast } from '../components/toast.js';
 import { Modal } from '../components/modal.js';
 import { initSocket, onMessageReceived } from '../services/socket.js';
+import { escapeHtml } from '../utils/sanitize.js';
 
 // ============================================
 // RENDER
@@ -131,13 +132,13 @@ function buildConversationsListHtml(conversations) {
                 </div>
                 <div class="conv-content">
                     <div class="conv-header">
-                        <span class="conv-sender"><strong>${expediteur}</strong></span>
-                        <span class="conv-date">${date}</span>
+                        <span class="conv-sender"><strong>${escapeHtml(expediteur)}</strong></span>
+                        <span class="conv-date">${escapeHtml(date)}</span>
                     </div>
-                    <div class="conv-subject">${sujet}</div>
-                    <div class="conv-preview">${contenu.substring(0, 100)}${contenu.length > 100 ? '...' : ''}</div>
+                    <div class="conv-subject">${escapeHtml(sujet)}</div>
+                    <div class="conv-preview">${escapeHtml(contenu.substring(0, 100))}${contenu.length > 100 ? '...' : ''}</div>
                     <div class="conv-footer">
-                        <span class="conv-agent"><i class="fas fa-user-tie"></i> Répondu par : ${repondant}</span>
+                        <span class="conv-agent"><i class="fas fa-user-tie"></i> Répondu par : ${escapeHtml(repondant)}</span>
                         ${hasAttachment ? `<span class="conv-attachments"><i class="fas fa-paperclip"></i> Pièce jointe</span>` : ''}
                         <span class="conv-actions">
                             <button class="conv-btn reply-btn" data-id="${conv.id}" title="Répondre"><i class="fas fa-reply"></i></button>
@@ -299,8 +300,8 @@ async function showReplyModal(id) {
                     <i class="fas fa-reply"></i>
                 </div>
                 <div class="modal-title-group">
-                    <h2>Répondre à ${conv.clientName || conv.client || 'client'}</h2>
-                    <p>Sujet : ${conv.subject || 'Sans objet'}</p>
+                    <h2>Répondre à ${escapeHtml(conv.clientName || conv.client || 'client')}</h2>
+                    <p>Sujet : ${escapeHtml(conv.subject || 'Sans objet')}</p>
                 </div>
                 <button class="modal-close" id="closeModalBtn">
                     <i class="fas fa-times"></i>
@@ -496,8 +497,8 @@ async function showNewMessageModal() {
             const checked = selectedClients.has(client) ? 'checked' : '';
             html += `
                 <label class="recipient-item-modern">
-                    <input type="checkbox" value="${client}" ${checked}>
-                    <span class="recipient-name">${client}</span>
+                    <input type="checkbox" value="${escapeHtml(client)}" ${checked}>
+                    <span class="recipient-name">${escapeHtml(client)}</span>
                 </label>
             `;
         });
@@ -528,8 +529,8 @@ async function showNewMessageModal() {
         displayClients.forEach((client) => {
             html += `
                 <span class="selected-tag">
-                    ${client}
-                    <i class="fas fa-times remove-tag" data-client="${client}"></i>
+                    ${escapeHtml(client)}
+                    <i class="fas fa-times remove-tag" data-client="${escapeHtml(client)}"></i>
                 </span>
             `;
         });

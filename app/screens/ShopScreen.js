@@ -1,44 +1,45 @@
 // ╔══════════════════════════════════════════════════════════════════════╗
 // ║                    NT ALBEY — screens/ShopScreen.js                  ║
-// ║                          Version 16.4.0                              ║
+// ║                          Version 18.0.0                              ║
 // ║                                                                      ║
-// ║  ✨ NOUVEAUTÉS v16.4 :                                               ║
-// ║  ├── NEW : 4 icônes illustratives redessinées                        ║
-// ║  │        ├── Stock     : entrepôt + flèche "charger"                ║
-// ║  │        ├── Crédit    : smartphone + ondes GSM                     ║
-// ║  │        ├── Softphone : SIM dans un cloud (eSIM)                   ║
-// ║  │        └── BLR       : antenne radio + ondes                      ║
-// ║  ├── NEW : prop `size` sur les 4 icônes (défaut 30, +visible)        ║
-// ║  └── KEPT : tout le reste de la logique métier inchangée             ║
+// ║  ✨ NOUVEAUTÉS v18 :                                                 ║
+// ║  ├── Zone montant premium (focus vert, bordure pointillée, caret)   ║
+// ║  ├── Placeholder "Combien ?" + hint "⌨️ Touchez pour saisir"         ║
+// ║  ├── CTA désactivé avec texte d'aide explicatif                     ║
+// ║  └── Auto-focus du montant à l'arrivée                              ║
 // ║                                                                      ║
-// ║  v16.3 :                                                             ║
-// ║  ├── FIX : IconShop accepte une prop `size` → plus de débordement    ║
-// ║  ├── FIX : message d'erreur BLR différencié (check vs renew)         ║
-// ║  ├── FIX : refreshAfterPurchase avec cleanup (useRef + useEffect)    ║
-// ║  ├── CLEAN : suppression du code mort (balance, IconShield, etc.)    ║
-// ║  └── A11Y : accessibilityLabel sur les boutons critiques             ║
+// ║  ✅ v17.1 : grille services 2 colonnes                               ║
+// ║  ✅ v17.0 : homogénéisation totale                                   ║
+// ║                                                                      ║
+// ║  ⚠️ LOGIQUE MÉTIER INCHANGÉE (API, validations, notifications, etc.)  ║
 // ╚══════════════════════════════════════════════════════════════════════╝
 
-import React, { useState, useEffect, useRef } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
   StyleSheet,
-  ScrollView,
   Modal,
-  Alert,
   Image,
   useWindowDimensions,
   ActivityIndicator,
   Platform,
+  Animated,
+  Easing,
+  Keyboard,
+  PanResponder,
+  FlatList,
+  Vibration,
 } from 'react-native';
+import { TranslatedText as Text, TranslatedTextInput as TextInput, TranslatedAlert as Alert, ThemedView as View, ThemedTouchableOpacity as TouchableOpacity, ThemedScrollView as ScrollView, ThemedKeyboardAvoidingView as KeyboardAvoidingView } from '../context/LanguageContext';
+import { humanizeError } from '../utils/errorHandler';
 import Svg, { Path, Circle, Rect } from 'react-native-svg';
 import * as LocalAuthentication from 'expo-local-authentication';
 
 import { useTransactions } from '../context/TransactionContext';
 import { API } from '../services/api';
+import { pickPhoneContact } from '../utils/contactPicker';
+import RecentNumbersBar, { saveRecentNumber } from '../components/RecentNumbersBar';
+import { triggerSuccessHaptic } from '../utils/haptics';
 import {
   verifyTransactionAuth,
   AUTH_METHOD,
@@ -50,7 +51,7 @@ import { saveTxMetadata } from '../utils/txRefCache';
 import { saveShopTx } from '../utils/shopTxStore';
 
 /* ═══════════════════════════════════════════════════════════════════════
-   PALETTE PREMIUM
+   PALETTE PREMIUM — HARMONISÉE
    ═══════════════════════════════════════════════════════════════════════ */
 
 const COLORS = {
@@ -69,19 +70,19 @@ const COLORS = {
   blueSoft:      '#DBEAFE',
   gold:          '#F59E0B',
   goldSoft:      '#FEF3C7',
-  textPrimary:   '#0F172A',
-  textSecondary: '#64748B',
-  textMuted:     '#94A3B8',
-  border:        '#E2E8F0',
-  borderSoft:    '#F1F5F9',
+  textPrimary:   '#0B1220',
+  textSecondary: '#5A6474',
+  textMuted:     '#A0A8B4',
+  border:        '#E7EAF0',
+  borderSoft:    '#F3F5F9',
   surface:       '#FFFFFF',
-  surfaceAlt:    '#F8FAFC',
-  background:    '#F1F5F9',
+  surfaceAlt:    '#FAFBFD',
+  background:    '#FFFFFF',
   danger:        '#EF4444',
   dangerSoft:    '#FEE2E2',
   success:       '#10B981',
   successSoft:   '#D1FAE5',
-  shadow:        '#0F172A',
+  shadow:        '#0B1220',
 };
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -89,178 +90,51 @@ const COLORS = {
    ═══════════════════════════════════════════════════════════════════════ */
 
 const IconBack = () => (
-  <Svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-    <Path d="M15 18l-6-6 6-6" stroke={COLORS.textPrimary} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+  <Svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+    <Path d="M15 18l-6-6 6-6" stroke={COLORS.textPrimary} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
   </Svg>
 );
 
-// ✅ v16.3 : `size` prop pour éviter le débordement dans le modal (76×76)
-const IconShop = ({ size = 90 }) => (
+const IconShop = ({ size = 80 }) => (
   <Image
     source={require('../assets/images/boutique.png')}
     style={{ width: size, height: size, resizeMode: 'contain' }}
   />
 );
 
-/* ═══════════════════════════════════════════════════════════════════════
-   ✨ v16.4 — ICÔNES ILLUSTRATIVES REDESSINÉES
-   ═══════════════════════════════════════════════════════════════════════ */
-
-// 📦 STOCK — Entrepôt + flèche "charger vers le bas"
-//    Métaphore : je recharge mon entrepôt (stock) pour revendre ensuite
-const IconStock = ({ color = COLORS.teal, size = 30 }) => (
+const IconClose = ({ color = COLORS.textSecondary, size = 20 }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-    {/* Toit / hangar */}
+    <Path d="M18 6L6 18M6 6l12 12" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+  </Svg>
+);
+
+const IconWarning = ({ color = '#FFFFFF', size = 20 }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Path d="M12 9v4M12 17h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+  </Svg>
+);
+
+const IconFingerprint = ({ color = '#FFFFFF', size = 20 }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Path
-      d="M3 9 L12 3 L21 9"
+      d="M12 11v3a4 4 0 01-4 4M12 8a4 4 0 014 4v3a6 6 0 01-1 3.3M8 12a4 4 0 014-4 4 4 0 014 4v2M6.5 15.5A6 6 0 0112 6a6 6 0 015.5 3.5M4 13a8 8 0 0116 0v3"
       stroke={color}
       strokeWidth="1.8"
       strokeLinecap="round"
       strokeLinejoin="round"
     />
-    {/* Corps de l'entrepôt */}
-    <Path
-      d="M5 9 V21 H19 V9"
-      stroke={color}
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      fill={`${color}12`}
-    />
-    {/* Flèche "charger vers le bas" */}
-    <Path d="M12 11.5 V17" stroke={color} strokeWidth="2" strokeLinecap="round" />
-    <Path
-      d="M9 14.5 L12 17.5 L15 14.5"
-      stroke={color}
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-    {/* Sol */}
-    <Path d="M3 21 H21" stroke={color} strokeWidth="1.8" strokeLinecap="round" />
-  </Svg>
-);
-
-// 📱 CRÉDIT — Smartphone + ondes GSM
-//    Métaphore : crédit téléphonique GSM (appels, SMS, internet mobile)
-const IconCredit = ({ color = COLORS.accent, size = 30 }) => (
-  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-    {/* Smartphone */}
-    <Rect
-      x="7" y="3" width="10" height="18" rx="2"
-      stroke={color} strokeWidth="1.8"
-      fill={`${color}12`}
-    />
-    {/* Écran */}
-    <Rect
-      x="9" y="5.5" width="6" height="8.5" rx="0.5"
-      stroke={color} strokeWidth="1.5"
-    />
-    {/* Bouton home */}
-    <Circle cx="12" cy="18" r="1" fill={color} />
-    {/* Ondes GSM gauche */}
-    <Path
-      d="M5 7 A5 5 0 0 0 5 15"
-      stroke={color} strokeWidth="1.8" strokeLinecap="round"
-    />
-    <Path
-      d="M2.5 4.5 A8.5 8.5 0 0 0 2.5 17.5"
-      stroke={color} strokeWidth="1.5" strokeLinecap="round" opacity="0.5"
-    />
-    {/* Ondes GSM droite */}
-    <Path
-      d="M19 7 A5 5 0 0 1 19 15"
-      stroke={color} strokeWidth="1.8" strokeLinecap="round"
-    />
-    <Path
-      d="M21.5 4.5 A8.5 8.5 0 0 1 21.5 17.5"
-      stroke={color} strokeWidth="1.5" strokeLinecap="round" opacity="0.5"
-    />
-  </Svg>
-);
-
-// 📞 SOFTPHONE — SIM card dans un cloud (eSIM / téléphone virtuel)
-//    Métaphore : la SIM n'est pas dans le téléphone mais dans le cloud
-const IconSoftphone = ({ color = COLORS.purple, size = 30 }) => (
-  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-    {/* Cloud */}
-    <Path
-      d="M8 10 A3.5 3.5 0 0 1 11 7 A4 4 0 0 1 18 8 A3 3 0 0 1 18 13 H9 A3 3 0 0 1 8 10 Z"
-      stroke={color}
-      strokeWidth="1.8"
-      strokeLinejoin="round"
-      fill={`${color}15`}
-    />
-    {/* SIM card sous le cloud (coin coupé = SIM classique) */}
-    <Path
-      d="M8 15 L10.5 12.5 H18 V21 H8 Z"
-      stroke={color}
-      strokeWidth="1.8"
-      strokeLinejoin="round"
-      fill={`${color}10`}
-    />
-    {/* Puce (chip) sur la SIM */}
-    <Rect
-      x="11" y="16.5" width="3.5" height="3.5" rx="0.4"
-      stroke={color} strokeWidth="1.3"
-    />
-    {/* Petit éclair dans la puce (indice "téléphone actif") */}
-    <Path
-      d="M12.6 17.6 L12 18.8 H13.3 L12.7 19.9"
-      stroke={color} strokeWidth="1" strokeLinecap="round" strokeLinejoin="round"
-    />
-  </Svg>
-);
-
-// 📡 BLR — Antenne radio (mât + traverses + ondes)
-//    Métaphore : Boucle Locale Radio (internet haut débit via ondes radio)
-const IconBLR = ({ color = COLORS.sky, size = 30 }) => (
-  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-    {/* Mât central */}
-    <Path d="M12 4 V21" stroke={color} strokeWidth="1.8" strokeLinecap="round" />
-    {/* Pieds (A-frame / tour Eiffel) */}
-    <Path d="M7 21 L12 4" stroke={color} strokeWidth="1.8" strokeLinecap="round" />
-    <Path d="M17 21 L12 4" stroke={color} strokeWidth="1.8" strokeLinecap="round" />
-    {/* Traverses */}
-    <Path d="M9 16 H15" stroke={color} strokeWidth="1.8" strokeLinecap="round" />
-    <Path d="M10 10.5 H14" stroke={color} strokeWidth="1.8" strokeLinecap="round" />
-    {/* Sommet émetteur */}
-    <Circle cx="12" cy="4" r="1.3" fill={color} />
-    {/* Ondes internes gauche / droite */}
-    <Path d="M6.5 5.5 A4.5 4.5 0 0 0 6.5 11" stroke={color} strokeWidth="1.8" strokeLinecap="round" />
-    <Path d="M17.5 5.5 A4.5 4.5 0 0 1 17.5 11" stroke={color} strokeWidth="1.8" strokeLinecap="round" />
-    {/* Ondes externes gauche / droite */}
-    <Path d="M3.5 3 A8 8 0 0 0 3.5 13" stroke={color} strokeWidth="1.5" strokeLinecap="round" opacity="0.5" />
-    <Path d="M20.5 3 A8 8 0 0 1 20.5 13" stroke={color} strokeWidth="1.5" strokeLinecap="round" opacity="0.5" />
-  </Svg>
-);
-
-/* ─── Autres icônes (inchangées) ───────────────────────────────────── */
-
-const IconUser = ({ color = COLORS.primary }) => (
-  <Svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-    <Circle cx="12" cy="8" r="4" stroke={color} strokeWidth="1.8" />
-    <Path d="M5 20v-2a7 7 0 0114 0v2" stroke={color} strokeWidth="1.8" strokeLinecap="round" />
-  </Svg>
-);
-
-const IconUsers = ({ color = COLORS.textMuted }) => (
-  <Svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-    <Circle cx="9" cy="8" r="3.5" stroke={color} strokeWidth="1.8" />
-    <Path d="M3 20v-2a6 6 0 0112 0v2" stroke={color} strokeWidth="1.8" strokeLinecap="round" />
-    <Path d="M16 4a4 4 0 010 8M18 20v-2a6 6 0 00-3-5.2" stroke={color} strokeWidth="1.8" strokeLinecap="round" />
   </Svg>
 );
 
 const IconEyeOpen = ({ color = COLORS.primary }) => (
-  <Svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+  <Svg width="20" height="20" viewBox="0 0 24 24" fill="none">
     <Path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" stroke={color} strokeWidth="1.9" />
     <Circle cx="12" cy="12" r="3" stroke={color} strokeWidth="1.9" />
   </Svg>
 );
 
 const IconEyeClosed = ({ color = COLORS.textMuted }) => (
-  <Svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+  <Svg width="20" height="20" viewBox="0 0 24 24" fill="none">
     <Path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" stroke={color} strokeWidth="1.9" />
     <Path d="M3 3l18 18" stroke={color} strokeWidth="1.9" strokeLinecap="round" />
     <Circle cx="12" cy="12" r="3" stroke={color} strokeWidth="1.9" />
@@ -268,7 +142,76 @@ const IconEyeClosed = ({ color = COLORS.textMuted }) => (
 );
 
 /* ═══════════════════════════════════════════════════════════════════════
-   HELPERS
+   ICÔNES ILLUSTRATIVES — Services de la Boutique
+   ═══════════════════════════════════════════════════════════════════════ */
+
+// 📦 STOCK — Entrepôt + flèche "charger vers le bas"
+const IconStock = ({ color = COLORS.teal, size = 28 }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Path d="M3 9 L12 3 L21 9" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    <Path d="M5 9 V21 H19 V9" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" fill={`${color}12`} />
+    <Path d="M12 11.5 V17" stroke={color} strokeWidth="2" strokeLinecap="round" />
+    <Path d="M9 14.5 L12 17.5 L15 14.5" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    <Path d="M3 21 H21" stroke={color} strokeWidth="1.8" strokeLinecap="round" />
+  </Svg>
+);
+
+// 📱 CRÉDIT — Smartphone + ondes GSM
+const IconCredit = ({ color = COLORS.accent, size = 28 }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Rect x="7" y="3" width="10" height="18" rx="2" stroke={color} strokeWidth="1.8" fill={`${color}12`} />
+    <Rect x="9" y="5.5" width="6" height="8.5" rx="0.5" stroke={color} strokeWidth="1.5" />
+    <Circle cx="12" cy="18" r="1" fill={color} />
+    <Path d="M5 7 A5 5 0 0 0 5 15" stroke={color} strokeWidth="1.8" strokeLinecap="round" />
+    <Path d="M2.5 4.5 A8.5 8.5 0 0 0 2.5 17.5" stroke={color} strokeWidth="1.5" strokeLinecap="round" opacity="0.5" />
+    <Path d="M19 7 A5 5 0 0 1 19 15" stroke={color} strokeWidth="1.8" strokeLinecap="round" />
+    <Path d="M21.5 4.5 A8.5 8.5 0 0 1 21.5 17.5" stroke={color} strokeWidth="1.5" strokeLinecap="round" opacity="0.5" />
+  </Svg>
+);
+
+// 📞 SOFTPHONE — SIM card dans un cloud (eSIM)
+const IconSoftphone = ({ color = COLORS.purple, size = 28 }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Path d="M8 10 A3.5 3.5 0 0 1 11 7 A4 4 0 0 1 18 8 A3 3 0 0 1 18 13 H9 A3 3 0 0 1 8 10 Z" stroke={color} strokeWidth="1.8" strokeLinejoin="round" fill={`${color}15`} />
+    <Path d="M8 15 L10.5 12.5 H18 V21 H8 Z" stroke={color} strokeWidth="1.8" strokeLinejoin="round" fill={`${color}10`} />
+    <Rect x="11" y="16.5" width="3.5" height="3.5" rx="0.4" stroke={color} strokeWidth="1.3" />
+    <Path d="M12.6 17.6 L12 18.8 H13.3 L12.7 19.9" stroke={color} strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" />
+  </Svg>
+);
+
+// 📡 BLR — Antenne radio
+const IconBLR = ({ color = COLORS.sky, size = 28 }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Path d="M12 4 V21" stroke={color} strokeWidth="1.8" strokeLinecap="round" />
+    <Path d="M7 21 L12 4" stroke={color} strokeWidth="1.8" strokeLinecap="round" />
+    <Path d="M17 21 L12 4" stroke={color} strokeWidth="1.8" strokeLinecap="round" />
+    <Path d="M9 16 H15" stroke={color} strokeWidth="1.8" strokeLinecap="round" />
+    <Path d="M10 10.5 H14" stroke={color} strokeWidth="1.8" strokeLinecap="round" />
+    <Circle cx="12" cy="4" r="1.3" fill={color} />
+    <Path d="M6.5 5.5 A4.5 4.5 0 0 0 6.5 11" stroke={color} strokeWidth="1.8" strokeLinecap="round" />
+    <Path d="M17.5 5.5 A4.5 4.5 0 0 1 17.5 11" stroke={color} strokeWidth="1.8" strokeLinecap="round" />
+    <Path d="M3.5 3 A8 8 0 0 0 3.5 13" stroke={color} strokeWidth="1.5" strokeLinecap="round" opacity="0.5" />
+    <Path d="M20.5 3 A8 8 0 0 1 20.5 13" stroke={color} strokeWidth="1.5" strokeLinecap="round" opacity="0.5" />
+  </Svg>
+);
+
+const IconUser = ({ color = COLORS.primary }) => (
+  <Svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+    <Circle cx="12" cy="8" r="4" stroke={color} strokeWidth="1.8" />
+    <Path d="M5 20v-2a7 7 0 0114 0v2" stroke={color} strokeWidth="1.8" strokeLinecap="round" />
+  </Svg>
+);
+
+const IconUsers = ({ color = COLORS.textMuted }) => (
+  <Svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+    <Circle cx="9" cy="8" r="3.5" stroke={color} strokeWidth="1.8" />
+    <Path d="M3 20v-2a6 6 0 0112 0v2" stroke={color} strokeWidth="1.8" strokeLinecap="round" />
+    <Path d="M16 4a4 4 0 010 8M18 20v-2a6 6 0 00-3-5.2" stroke={color} strokeWidth="1.8" strokeLinecap="round" />
+  </Svg>
+);
+
+/* ═══════════════════════════════════════════════════════════════════════
+   HELPERS (logique métier — inchangés)
    ═══════════════════════════════════════════════════════════════════════ */
 
 const buildFriendlyAlertMessage = (kind, rawMessage) => {
@@ -354,10 +297,6 @@ const isValidNigerPhoneLocal = (raw) =>
 const cleanBlrNumber = (raw) =>
   String(raw || '').trim().toUpperCase().replace(/\s/g, '');
 
-/* ═══════════════════════════════════════════════════════════════════════
-   HELPERS POST-ACHAT
-   ═══════════════════════════════════════════════════════════════════════ */
-
 const notifyShopPurchase = async ({
   title,
   message,
@@ -389,12 +328,22 @@ const cacheShopTxMetadata = async (txId, meta) => {
   }
 };
 
+const hapticTap = (intensity = 'light') => {
+  if (Platform.OS === 'web') return;
+  try {
+    if (intensity === 'heavy') Vibration.vibrate(20);
+    else if (intensity === 'medium') Vibration.vibrate(12);
+    else Vibration.vibrate(6);
+  } catch (_) {}
+};
+
 /* ═══════════════════════════════════════════════════════════════════════
    COMPOSANT PRINCIPAL
    ═══════════════════════════════════════════════════════════════════════ */
 
 export default function ShopScreen({ navigation }) {
-  const { width = 400 } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const { width = 400, height = 800 } = useWindowDimensions();
 
   /* ─── Navigation interne ─────────────────────────────────────────── */
   const [selectedCategory, setSelectedCategory] = useState(null);
@@ -406,6 +355,8 @@ export default function ShopScreen({ navigation }) {
   const [modalVisible, setModalVisible]         = useState(false);
   const [pin, setPin]                           = useState('');
   const [pinVisible, setPinVisible]             = useState(false);
+  const [pinRequired, setPinRequired]           = useState(false);
+  const pinInputRef = useRef(null);
 
   /* ─── Champs Stock / Crédit / Softphone ──────────────────────────── */
   const [stockAmount, setStockAmount]               = useState('');
@@ -414,6 +365,15 @@ export default function ShopScreen({ navigation }) {
   const [airtimeMode, setAirtimeMode]               = useState('self');
   const [airtimeTargetPhone, setAirtimeTargetPhone] = useState('');
   const [softphoneTargetPhone, setSoftphoneTargetPhone] = useState('');
+
+  /* ─── Focus / animations montant ────────────────────────────────── */
+  const [amountFocused, setAmountFocused] = useState(false);
+  const stockAmountInputRef = useRef(null);
+  const airtimeAmountInputRef = useRef(null);
+  const softphoneAmountInputRef = useRef(null);
+
+  const amountOpacity = useRef(new Animated.Value(1)).current;
+  const caretOpacity = useRef(new Animated.Value(1)).current;
 
   /* ─── BLR ────────────────────────────────────────────────────────── */
   const [blrNumber, setBlrNumber]   = useState('');
@@ -434,6 +394,13 @@ export default function ShopScreen({ navigation }) {
   const [currentUserName,  setCurrentUserName]  = useState(null);
   const [userId, setUserId]                     = useState(null);
 
+  /* ─── Toast ──────────────────────────────────────────────────────── */
+  const [toast, setToast] = useState(null);
+  const toastAnim = useRef(new Animated.Value(-150)).current;
+
+  /* ─── PanResponder pour le sheet ─────────────────────────────────── */
+  const sheetTranslateY = useRef(new Animated.Value(0)).current;
+
   /* ─── Hooks context ──────────────────────────────────────────────── */
   const { refreshWallet, refreshData } = useTransactions();
 
@@ -452,9 +419,7 @@ export default function ShopScreen({ navigation }) {
   const refreshAfterPurchase = async (label = 'achat') => {
     try {
       if (__DEV__) console.log(`⏳ [Shop] Attente commit backend après ${label}...`);
-
       await new Promise((r) => setTimeout(r, 1200));
-
       if (typeof refreshData === 'function') {
         await refreshData();
         if (__DEV__) console.log(`✅ [Shop] Historique rafraîchi après ${label}`);
@@ -462,7 +427,6 @@ export default function ShopScreen({ navigation }) {
         await refreshWallet();
         if (__DEV__) console.log(`✅ [Shop] Wallet rafraîchi (fallback) après ${label}`);
       }
-
       if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
       refreshTimerRef.current = setTimeout(async () => {
         try {
@@ -477,6 +441,27 @@ export default function ShopScreen({ navigation }) {
       if (__DEV__) console.warn(`⚠️ [Shop] Refresh post-${label} échoué :`, e?.message);
     }
   };
+
+  /* ═══════════════════════════════════════════════════════════════════
+     🎯 TOAST PREMIUM
+     ═══════════════════════════════════════════════════════════════════ */
+  const showToast = useCallback((type, title, message) => {
+    setToast({ type, title, message: type === 'error' ? humanizeError(message) : message });
+    Animated.spring(toastAnim, {
+      toValue: 1,
+      tension: 65,
+      friction: 9,
+      useNativeDriver: true,
+    }).start();
+
+    setTimeout(() => {
+      Animated.timing(toastAnim, {
+        toValue: -150,
+        duration: 250,
+        useNativeDriver: true,
+      }).start(() => setToast(null));
+    }, 4000);
+  }, [toastAnim]);
 
   /* ═══════════════════════════════════════════════════════════════════
      EFFETS
@@ -500,7 +485,6 @@ export default function ShopScreen({ navigation }) {
       try {
         const compatible     = await LocalAuthentication.hasHardwareAsync();
         const deviceEnrolled = await LocalAuthentication.isEnrolledAsync();
-
         let accountEnrolled = false;
         try {
           const user = await API.getCurrentUser();
@@ -510,7 +494,6 @@ export default function ShopScreen({ navigation }) {
         } catch (_) {
           accountEnrolled = false;
         }
-
         const available = compatible && deviceEnrolled && accountEnrolled;
         setIsBiometricAvailable(available);
         setUseBiometric(available);
@@ -529,17 +512,89 @@ export default function ShopScreen({ navigation }) {
         setMainCategories(data);
       } catch (error) {
         console.error('Erreur chargement catégories:', error);
-        Alert.alert('Erreur', 'Impossible de charger la boutique. Veuillez réessayer.');
+        showToast('error', 'Erreur', 'Impossible de charger la boutique.');
       } finally {
         setIsLoading(false);
       }
     };
     loadMainCategories();
-  }, []);
+  }, [showToast]);
+
+  /* ─── Animations du montant ─────────────────────────────────────── */
+  useEffect(() => {
+    Animated.sequence([
+      Animated.timing(amountOpacity, { toValue: 0.6, duration: 90, useNativeDriver: true }),
+      Animated.timing(amountOpacity, { toValue: 1, duration: 140, useNativeDriver: true }),
+    ]).start();
+  }, [stockAmount, airtimeAmount, softphoneAmount]);
+
+  useEffect(() => {
+    const hasValue =
+      (selectedCategory === 'stock' && stockAmount) ||
+      (selectedCategory === 'credit' && airtimeAmount) ||
+      (selectedCategory === 'softphone' && softphoneAmount);
+
+    if (!amountFocused || hasValue) {
+      caretOpacity.setValue(1);
+      return;
+    }
+    const blink = Animated.loop(
+      Animated.sequence([
+        Animated.timing(caretOpacity, { toValue: 0, duration: 500, useNativeDriver: true }),
+        Animated.timing(caretOpacity, { toValue: 1, duration: 500, useNativeDriver: true }),
+      ])
+    );
+    blink.start();
+    return () => blink.stop();
+  }, [amountFocused, stockAmount, airtimeAmount, softphoneAmount, selectedCategory]);
+
+  /* ─── Auto-focus du montant à l'arrivée sur chaque catégorie ────── */
+  useEffect(() => {
+    if (!selectedCategory) return;
+    if (selectedCategory === 'blr') return;
+    const timer = setTimeout(() => {
+      if (selectedCategory === 'stock') stockAmountInputRef.current?.focus();
+      if (selectedCategory === 'credit') airtimeAmountInputRef.current?.focus();
+      if (selectedCategory === 'softphone') softphoneAmountInputRef.current?.focus();
+    }, 450);
+    return () => clearTimeout(timer);
+  }, [selectedCategory]);
 
   /* ═══════════════════════════════════════════════════════════════════
      AUTHENTIFICATION
      ═══════════════════════════════════════════════════════════════════ */
+
+  const closeConfirmModal = useCallback(() => {
+    if (isProcessing || isVerifyingAuth) return;
+    setModalVisible(false);
+    setPin('');
+    setPinVisible(false);
+    setPinRequired(false);
+    setUseBiometric(isBiometricAvailable);
+    sheetTranslateY.setValue(0);
+  }, [isProcessing, isVerifyingAuth, isBiometricAvailable, sheetTranslateY]);
+
+  const sheetPanResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, g) => g.dy > 8 && Math.abs(g.dy) > Math.abs(g.dx),
+      onPanResponderMove: (_, g) => {
+        if (g.dy > 0) sheetTranslateY.setValue(g.dy);
+      },
+      onPanResponderRelease: (_, g) => {
+        if (g.dy > 120 || g.vy > 0.8) {
+          Animated.timing(sheetTranslateY, {
+            toValue: 800,
+            duration: 200,
+            useNativeDriver: true,
+          }).start(() => {
+            closeConfirmModal();
+          });
+        } else {
+          Animated.spring(sheetTranslateY, { toValue: 0, useNativeDriver: true }).start();
+        }
+      },
+    })
+  ).current;
 
   const authenticateWithBiometrics = async () => {
     if (isProcessing || isVerifyingAuth) return;
@@ -549,13 +604,18 @@ export default function ShopScreen({ navigation }) {
       await executePurchase();
     } catch (error) {
       if (error?.message === AUTH_CANCELLED) return;
-      if (__DEV__) console.error('❌ [Shop] Biométrie :', error?.message);
-
       const msg = String(error?.message || '');
-      if (msg.includes('Session biométrique expirée') || msg.includes('Aucune empreinte')) {
+      if (
+        msg.includes('Session biométrique expirée') ||
+        msg.includes('Aucune empreinte') ||
+        msg.includes('non enregistrée')
+      ) {
         setUseBiometric(false);
+        setPinRequired(true);
+        setTimeout(() => pinInputRef.current?.focus(), 150);
+        return;
       }
-      Alert.alert('Authentification refusée', msg || 'Veuillez réessayer.');
+      showToast('error', 'Authentification refusée', msg || 'Veuillez réessayer.');
     } finally {
       setIsVerifyingAuth(false);
     }
@@ -564,17 +624,18 @@ export default function ShopScreen({ navigation }) {
   const confirmWithPin = async () => {
     if (isProcessing || isVerifyingAuth) return;
     if (!isValidPin(pin)) {
-      Alert.alert('Mot de passe invalide', 'Le mot de passe doit contenir entre 8 et 20 caractères.');
+      showToast('error', 'Mot de passe invalide', 'Le mot de passe doit contenir entre 8 et 20 caractères.');
       return;
     }
-
+    hapticTap('medium');
     setIsVerifyingAuth(true);
     try {
       await verifyTransactionAuth(AUTH_METHOD.PIN, pin);
       setPin('');
+      setPinRequired(false);
       await executePurchase();
     } catch (error) {
-      Alert.alert('Mot de passe incorrect', error?.message || 'Le mot de passe saisi est incorrect.');
+      showToast('error', 'Mot de passe incorrect', error?.message || 'Le mot de passe saisi est incorrect.');
       setPin('');
     } finally {
       setIsVerifyingAuth(false);
@@ -582,7 +643,7 @@ export default function ShopScreen({ navigation }) {
   };
 
   /* ═══════════════════════════════════════════════════════════════════
-     EXÉCUTION DE L'ACHAT
+     EXÉCUTION DE L'ACHAT — LOGIQUE MÉTIER INCHANGÉE
      ═══════════════════════════════════════════════════════════════════ */
 
   const executePurchase = async () => {
@@ -640,16 +701,16 @@ export default function ShopScreen({ navigation }) {
         setStockAmount('');
         setUseBiometric(isBiometricAvailable);
 
-        Alert.alert(
+        showToast(
+          'success',
           '✅ Stock rechargé',
-          result?.message || `Votre stock a été rechargé de ${amount.toLocaleString()} FCFA.`,
-          [{ text: 'OK' }]
+          result?.message || `Votre stock a été rechargé de ${amount.toLocaleString()} FCFA.`
         );
 
         await refreshAfterPurchase('stock');
       } catch (error) {
         const friendly = buildFriendlyAlertMessage('stock', error?.message);
-        Alert.alert('Recharge impossible', friendly, [{ text: 'Compris' }]);
+        showToast('error', 'Recharge impossible', friendly);
       } finally {
         setIsProcessing(false);
       }
@@ -666,6 +727,7 @@ export default function ShopScreen({ navigation }) {
         let result;
         if (isForOther) {
           result = await API.sendAirtimeToPhone(phoneNumber, amount);
+          saveRecentNumber(phoneNumber);
         } else {
           result = await API.sendAirtimeToMe(amount);
         }
@@ -720,19 +782,19 @@ export default function ShopScreen({ navigation }) {
         setAirtimeMode('self');
         setUseBiometric(isBiometricAvailable);
 
-        Alert.alert(
-          '✅ ' + (isForOther ? 'Crédit envoyé' : 'Crédit rechargé'),
+        showToast(
+          'success',
+          isForOther ? '✅ Crédit envoyé' : '✅ Crédit rechargé',
           result?.message ||
             (isForOther
               ? `Vous avez rechargé le crédit de +227 ${phoneNumber} pour un montant de ${amount.toLocaleString()} FCFA.`
-              : `Votre crédit téléphonique a été rechargé de ${amount.toLocaleString()} FCFA.`),
-          [{ text: 'OK' }]
+              : `Votre crédit téléphonique a été rechargé de ${amount.toLocaleString()} FCFA.`)
         );
 
         await refreshAfterPurchase('crédit');
       } catch (error) {
         const friendly = buildFriendlyAlertMessage('airtime', error?.message);
-        Alert.alert('Recharge impossible', friendly, [{ text: 'Compris' }]);
+        showToast('error', 'Recharge impossible', friendly);
       } finally {
         setIsProcessing(false);
       }
@@ -790,17 +852,17 @@ export default function ShopScreen({ navigation }) {
         setSoftphoneTargetPhone('');
         setUseBiometric(isBiometricAvailable);
 
-        Alert.alert(
+        showToast(
+          'success',
           '✅ Softphone envoyé',
           result?.message ||
-            `Vous avez rechargé le Softphone de +227 ${phoneNumber} pour un montant de ${amount.toLocaleString()} FCFA.`,
-          [{ text: 'OK' }]
+            `Vous avez rechargé le Softphone de +227 ${phoneNumber} pour un montant de ${amount.toLocaleString()} FCFA.`
         );
 
         await refreshAfterPurchase('softphone');
       } catch (error) {
         const friendly = buildFriendlyAlertMessage('softphone', error?.message);
-        Alert.alert('Recharge impossible', friendly, [{ text: 'Compris' }]);
+        showToast('error', 'Recharge impossible', friendly);
       } finally {
         setIsProcessing(false);
       }
@@ -863,12 +925,12 @@ export default function ShopScreen({ navigation }) {
           setBlrResult(fresh);
         } catch (_) {}
 
-        Alert.alert('Abonnement renouvelé', successMessage, [{ text: 'OK' }]);
+        showToast('success', 'Abonnement renouvelé', successMessage);
 
         await refreshAfterPurchase('BLR');
       } catch (error) {
         const friendlyBlrError = buildBlrRenewErrorMessage(error?.message);
-        Alert.alert('Renouvellement impossible', friendlyBlrError, [{ text: 'Compris' }]);
+        showToast('error', 'Renouvellement impossible', friendlyBlrError);
       } finally {
         setIsProcessing(false);
       }
@@ -888,13 +950,16 @@ export default function ShopScreen({ navigation }) {
 
     const amt = parseInt(stockAmount, 10);
     if (!amt || amt <= 0) {
-      Alert.alert('Erreur', 'Veuillez entrer un montant valide.');
+      showToast('error', 'Erreur', 'Veuillez entrer un montant valide.');
       return;
     }
     if (amt > 5_000_000) {
-      Alert.alert('Erreur', 'Le montant maximum est de 5 000 000 FCFA.');
+      showToast('error', 'Erreur', 'Le montant maximum est de 5 000 000 FCFA.');
       return;
     }
+
+    hapticTap('medium');
+    Keyboard.dismiss();
 
     setSelectedProduct({
       id: 'stock_self',
@@ -903,9 +968,10 @@ export default function ShopScreen({ navigation }) {
       phoneNumber: null,
       isStock: true,
     });
-    setModalVisible(true);
     setUseBiometric(isBiometricAvailable);
     setPin('');
+    setPinRequired(!isBiometricAvailable);
+    setModalVisible(true);
   };
 
   const handleBuyAirtime = () => {
@@ -913,23 +979,22 @@ export default function ShopScreen({ navigation }) {
 
     const amt = parseInt(airtimeAmount, 10);
     if (!amt || amt <= 0) {
-      Alert.alert('Erreur', 'Veuillez entrer un montant valide.');
+      showToast('error', 'Erreur', 'Veuillez entrer un montant valide.');
       return;
     }
     if (amt > 5_000_000) {
-      Alert.alert('Erreur', 'Le montant maximum est de 5 000 000 FCFA.');
+      showToast('error', 'Erreur', 'Le montant maximum est de 5 000 000 FCFA.');
       return;
     }
 
     if (airtimeMode === 'other') {
       const clean = cleanNigerPhone(airtimeTargetPhone);
       if (!isValidNigerPhoneLocal(clean)) {
-        Alert.alert(
-          'Numéro invalide',
-          'Le numéro du bénéficiaire doit commencer par 83 ou 93, suivi de 6 chiffres.'
-        );
+        showToast('error', 'Numéro invalide', 'Le numéro doit commencer par 83 ou 93, suivi de 6 chiffres.');
         return;
       }
+      hapticTap('medium');
+      Keyboard.dismiss();
       setSelectedProduct({
         id: 'airtime_other',
         name: 'Crédit pour un autre numéro',
@@ -939,6 +1004,8 @@ export default function ShopScreen({ navigation }) {
         isForOther: true,
       });
     } else {
+      hapticTap('medium');
+      Keyboard.dismiss();
       setSelectedProduct({
         id: 'airtime_self',
         name: 'Recharge Crédit téléphonique',
@@ -949,9 +1016,10 @@ export default function ShopScreen({ navigation }) {
       });
     }
 
-    setModalVisible(true);
     setUseBiometric(isBiometricAvailable);
     setPin('');
+    setPinRequired(!isBiometricAvailable);
+    setModalVisible(true);
   };
 
   const handleBuySoftphone = () => {
@@ -959,19 +1027,22 @@ export default function ShopScreen({ navigation }) {
 
     const amt = parseInt(softphoneAmount, 10);
     if (!amt || amt <= 0) {
-      Alert.alert('Erreur', 'Veuillez entrer un montant valide.');
+      showToast('error', 'Erreur', 'Veuillez entrer un montant valide.');
       return;
     }
     if (amt > 5_000_000) {
-      Alert.alert('Erreur', 'Le montant maximum est de 5 000 000 FCFA.');
+      showToast('error', 'Erreur', 'Le montant maximum est de 5 000 000 FCFA.');
       return;
     }
 
     const clean = cleanNigerPhone(softphoneTargetPhone);
     if (!isValidNigerPhoneLocal(clean)) {
-      Alert.alert('Numéro invalide', 'Le numéro doit commencer par 83 ou 93, suivi de 6 chiffres.');
+      showToast('error', 'Numéro invalide', 'Le numéro doit commencer par 83 ou 93, suivi de 6 chiffres.');
       return;
     }
+
+    hapticTap('medium');
+    Keyboard.dismiss();
 
     setSelectedProduct({
       id: 'softphone_other',
@@ -980,9 +1051,10 @@ export default function ShopScreen({ navigation }) {
       phoneNumber: clean,
       isSoftphone: true,
     });
-    setModalVisible(true);
     setUseBiometric(isBiometricAvailable);
     setPin('');
+    setPinRequired(!isBiometricAvailable);
+    setModalVisible(true);
   };
 
   /* ─── BLR : Vérification ─────────────────────────────────────────── */
@@ -992,11 +1064,11 @@ export default function ShopScreen({ navigation }) {
 
     const clean = cleanBlrNumber(blrNumber);
     if (!clean) {
-      Alert.alert('Erreur', 'Veuillez saisir un numéro BLR.');
+      showToast('error', 'Erreur', 'Veuillez saisir un numéro BLR.');
       return;
     }
     if (clean.length > 20) {
-      Alert.alert('Erreur', 'Le numéro BLR est trop long (20 caractères max).');
+      showToast('error', 'Erreur', 'Le numéro BLR est trop long (20 caractères max).');
       return;
     }
 
@@ -1022,6 +1094,8 @@ export default function ShopScreen({ navigation }) {
     const blrCode = blrResult.numeroBlr || cleanBlrNumber(blrNumber);
     const price   = Number(blrResult.prix || 0);
 
+    hapticTap('medium');
+
     setSelectedProduct({
       id: 'blr_resubscribe',
       name: 'Réabonnement BLR',
@@ -1029,9 +1103,10 @@ export default function ShopScreen({ navigation }) {
       blrNumber: blrCode,
       isBLRResubscribe: true,
     });
-    setModalVisible(true);
     setUseBiometric(isBiometricAvailable);
     setPin('');
+    setPinRequired(!isBiometricAvailable);
+    setModalVisible(true);
   };
 
   /* ═══════════════════════════════════════════════════════════════════
@@ -1047,7 +1122,6 @@ export default function ShopScreen({ navigation }) {
       setAirtimeTargetPhone('');
       setSoftphoneTargetPhone('');
       setAirtimeMode('self');
-
       setBlrNumber('');
       setBlrResult(null);
       setBlrError(null);
@@ -1057,33 +1131,24 @@ export default function ShopScreen({ navigation }) {
     navigation.goBack();
   };
 
-  const closeModal = () => {
-    if (isProcessing || isVerifyingAuth) return;
-    setModalVisible(false);
-    setPin('');
-    setPinVisible(false);
-    setUseBiometric(isBiometricAvailable);
-  };
-
   /* ═══════════════════════════════════════════════════════════════════
      HELPERS DE RENDU
      ═══════════════════════════════════════════════════════════════════ */
 
-  const renderIcon = (iconName) => {
+  const renderIcon = (iconName, size = 28) => {
     const map = {
-      IconCredit:    <IconCredit />,
-      IconStock:     <IconStock />,
-      IconSoftphone: <IconSoftphone />,
-      IconBLR:       <IconBLR />,
+      IconCredit:    <IconCredit size={size} />,
+      IconStock:     <IconStock size={size} />,
+      IconSoftphone: <IconSoftphone size={size} />,
+      IconBLR:       <IconBLR size={size} />,
     };
-    return map[iconName] || <IconCredit />;
+    return map[iconName] || <IconCredit size={size} />;
   };
 
   const screenWidth = width || 400;
-  const H_PADDING = 16;
+  const H_PADDING = 24;
   const GAP = 12;
   const categoryCardWidth = Math.floor((screenWidth - H_PADDING * 2 - GAP) / 2);
-  const modalWidth = width ? width - 40 : 320;
 
   /* ─── Validations dynamiques ─────────────────────────────────────── */
   const airtimeClean      = cleanNigerPhone(airtimeTargetPhone);
@@ -1096,6 +1161,127 @@ export default function ShopScreen({ navigation }) {
   const softphoneValid   = isValidNigerPhoneLocal(softphoneClean);
   const isSoftphoneReady = softphoneAmount && parseInt(softphoneAmount, 10) > 0 && softphoneValid;
 
+  const isStockReady = stockAmount && parseInt(stockAmount, 10) > 0;
+
+  /* ─── CTA dynamiques par catégorie ───────────────────────────────── */
+  const getCategoryCtaLabel = () => {
+    if (selectedCategory === 'stock') {
+      const amt = parseInt(stockAmount, 10) || 0;
+      return amt > 0 ? `Recharger ${amt.toLocaleString('fr-FR')} FCFA` : 'Saisir un montant';
+    }
+    if (selectedCategory === 'credit') {
+      const amt = parseInt(airtimeAmount, 10) || 0;
+      if (airtimeMode === 'other' && !airtimeOtherValid) return 'Saisir un numéro valide';
+      return amt > 0
+        ? (airtimeMode === 'other' ? `Envoyer ${amt.toLocaleString('fr-FR')} FCFA` : `Recharger ${amt.toLocaleString('fr-FR')} FCFA`)
+        : 'Saisir un montant';
+    }
+    if (selectedCategory === 'softphone') {
+      const amt = parseInt(softphoneAmount, 10) || 0;
+      if (!softphoneValid) return 'Saisir un numéro valide';
+      return amt > 0 ? `Envoyer ${amt.toLocaleString('fr-FR')} FCFA` : 'Saisir un montant';
+    }
+    return '';
+  };
+
+  const getCategoryCtaHint = () => {
+    if (selectedCategory === 'stock') {
+      const amt = parseInt(stockAmount, 10) || 0;
+      return amt === 0 ? 'Saisissez un montant pour continuer' : '';
+    }
+    if (selectedCategory === 'credit') {
+      const amt = parseInt(airtimeAmount, 10) || 0;
+      if (airtimeMode === 'other' && !airtimeOtherValid) return 'Numéro du bénéficiaire invalide (83/93 + 6 chiffres)';
+      return amt === 0 ? 'Saisissez un montant pour continuer' : '';
+    }
+    if (selectedCategory === 'softphone') {
+      const amt = parseInt(softphoneAmount, 10) || 0;
+      if (!softphoneValid) return 'Numéro du bénéficiaire invalide (83/93 + 6 chiffres)';
+      return amt === 0 ? 'Saisissez un montant pour continuer' : '';
+    }
+    return '';
+  };
+
+  const isCategoryCtaReady = () => {
+    if (selectedCategory === 'stock') return isStockReady;
+    if (selectedCategory === 'credit') return isAirtimeReady;
+    if (selectedCategory === 'softphone') return isSoftphoneReady;
+    return false;
+  };
+
+  const handleCategoryCta = () => {
+    if (selectedCategory === 'stock') return handleBuyStock();
+    if (selectedCategory === 'credit') return handleBuyAirtime();
+    if (selectedCategory === 'softphone') return handleBuySoftphone();
+  };
+
+  /* ─── Zone montant premium (composant réutilisable) ─────────────── */
+  const renderAmountZone = ({
+    value,
+    onChange,
+    inputRef,
+    placeholder = 'Combien ?',
+    maxLength = 9,
+  }) => {
+    const numeric = parseInt(String(value || '0').replace(/\D/g, ''), 10) || 0;
+    const display = numeric > 0 ? numeric.toLocaleString('fr-FR') : '0';
+    const isFocused = amountFocused;
+
+    return (
+      <TouchableOpacity
+        style={[
+          styles.amountWrapper,
+          isFocused && styles.amountWrapperFocused,
+        ]}
+        activeOpacity={0.9}
+        onPress={() => inputRef.current?.focus()}
+      >
+        {numeric === 0 && !isFocused && (
+          <View style={styles.keyboardHintRow}>
+            <Text style={styles.keyboardHintIcon}>⌨️</Text>
+            <Text style={styles.keyboardHintLabel}>Touchez pour saisir</Text>
+          </View>
+        )}
+
+        {numeric === 0 ? (
+          <Text style={styles.amountEmptyState}>{placeholder}</Text>
+        ) : (
+          <Animated.Text
+            style={[styles.amountText, { opacity: amountOpacity }]}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+          >
+            {display}
+          </Animated.Text>
+        )}
+
+        <Text style={styles.amountCurrency}>FCFA</Text>
+
+        {isFocused && numeric === 0 && (
+          <Animated.View style={[styles.customCaret, { opacity: caretOpacity }]} />
+        )}
+
+        <TextInput
+          ref={inputRef}
+          style={styles.amountHiddenInput}
+          value={value}
+          onChangeText={(v) => {
+            const digits = v.replace(/[^\d]/g, '');
+            onChange(digits);
+          }}
+          onFocus={() => setAmountFocused(true)}
+          onBlur={() => setAmountFocused(false)}
+          keyboardType="numeric"
+          maxLength={maxLength}
+          caretHidden={true}
+          editable={!isProcessing}
+          showSoftInputOnFocus={true}
+          selectionColor={COLORS.primary}
+        />
+      </TouchableOpacity>
+    );
+  };
+
   /* ═══════════════════════════════════════════════════════════════════
      RENDU
      ═══════════════════════════════════════════════════════════════════ */
@@ -1107,8 +1293,6 @@ export default function ShopScreen({ navigation }) {
           <TouchableOpacity onPress={goBack} style={styles.backButton} activeOpacity={0.7}>
             <IconBack />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Boutique</Text>
-          <View style={{ width: 44 }} />
         </View>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={COLORS.primary} />
@@ -1119,48 +1303,82 @@ export default function ShopScreen({ navigation }) {
   }
 
   return (
-    <View style={styles.container}>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={0}
+    >
+      {/* ═══════════ TOAST PREMIUM ═══════════ */}
+      {toast && (
+        <Animated.View
+          style={[
+            styles.toastContainer,
+            {
+              backgroundColor: toast.type === 'error' ? COLORS.danger : COLORS.primary,
+              transform: [{
+                translateY: toastAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [-150, 0],
+                })
+              }],
+              opacity: toastAnim,
+            }
+          ]}
+        >
+          <View style={styles.toastIconWrap}>
+            <IconWarning color="#FFFFFF" size={20} />
+          </View>
+          <View style={styles.toastContent}>
+            <Text style={styles.toastTitle}>{toast.title}</Text>
+            <Text style={styles.toastMessage}>{toast.message}</Text>
+          </View>
+        </Animated.View>
+      )}
 
-      {/* ═══════════ EN-TÊTE ═══════════ */}
+      {/* ═══════════ HEADER (bouton retour seul) ═══════════ */}
       <View style={styles.header}>
         <TouchableOpacity onPress={goBack} style={styles.backButton} activeOpacity={0.7}>
           <IconBack />
         </TouchableOpacity>
-        <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle}>
-            {selectedCategory
-              ? mainCategories.find((c) => c.id === selectedCategory)?.name || 'Boutique'
-              : 'Boutique'}
-          </Text>
-          {!selectedCategory && (
-            <Text style={styles.headerSubtitle}>Rechargez en un clin d'œil</Text>
-          )}
-        </View>
-        <View style={{ width: 44 }} />
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+      {/* ═══════════ CONTENU ═══════════ */}
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: 120 + insets.bottom }]}
+        keyboardShouldPersistTaps="handled"
+      >
 
-        {/* ═══════════ CATÉGORIES (niveau 0) ═══════════ */}
+        {/* ═══════════ NIVEAU 0 : CATÉGORIES ═══════════ */}
         {!selectedCategory && (
           <>
-            <View style={styles.sectionHeader}>
-              <View style={styles.sectionAccent} />
-              <Text style={styles.sectionLabel}>Nos services</Text>
+            <View style={styles.heroBanner}>
+              <View style={styles.heroIconWrap}>
+                <IconShop size={48} />
+              </View>
+              <Text style={styles.heroTitle}>Boutique NT</Text>
+              <Text style={styles.heroSubtitle}>Rechargez en un clin d'œil</Text>
             </View>
 
-            <View style={[styles.categoriesGrid, { gap: GAP }]}>
+            <Text style={styles.label}>Nos services</Text>
+
+            <View style={styles.categoriesGrid}>
               {mainCategories.map((category) => (
                 <TouchableOpacity
                   key={category.id}
-                  style={[styles.categoryCard, { width: categoryCardWidth }]}
+                  style={[styles.categoryItem, { width: categoryCardWidth, marginBottom: GAP }]}
                   onPress={() => setSelectedCategory(category.id)}
-                  activeOpacity={0.85}
+                  activeOpacity={0.7}
                 >
-                  <View style={[styles.categoryIcon, { backgroundColor: `${category.color}15` }]}>
-                    {renderIcon(category.icon)}
+                  <View style={[styles.categoryHalo, { backgroundColor: `${category.color}10` }]}>
+                    <View style={[styles.categoryHaloInner, { backgroundColor: `${category.color}18` }]}>
+                      {renderIcon(category.icon, 28)}
+                    </View>
                   </View>
-                  <Text style={styles.categoryName}>{category.name}</Text>
+
+                  <Text style={styles.categoryName} numberOfLines={1}>
+                    {category.name}
+                  </Text>
                   <Text style={styles.categoryDesc} numberOfLines={2}>
                     {category.description}
                   </Text>
@@ -1173,74 +1391,31 @@ export default function ShopScreen({ navigation }) {
         {/* ═══════════ CATÉGORIE : STOCK ═══════════ */}
         {selectedCategory === 'stock' && (
           <>
-            <View style={styles.sectionHeader}>
-              <View style={styles.sectionAccent} />
-              <Text style={styles.sectionLabel}>Recharger mon stock</Text>
-            </View>
+            <Text style={styles.label}>Montant à recharger</Text>
 
-            <View style={styles.card}>
-              <View style={styles.cardIconWrapper}>
-                <View style={[styles.cardIconCircle, { backgroundColor: COLORS.tealSoft }]}>
-                  <IconStock size={34} />
-                </View>
-              </View>
+            {renderAmountZone({
+              value: stockAmount,
+              onChange: setStockAmount,
+              inputRef: stockAmountInputRef,
+              placeholder: 'Combien ?',
+            })}
 
-              <Text style={styles.cardTitle}>Stock NT Albey</Text>
-              <Text style={styles.cardSubtitle}>
-                Rechargez votre stock pour vos opérations (envoi de crédit...)
-              </Text>
-
-              <Text style={styles.inputLabel}>💵 Montant à recharger</Text>
-              <View style={styles.amountInputWrapper}>
-                <TextInput
-                  style={styles.amountInput}
-                  placeholder="0"
-                  placeholderTextColor={COLORS.textMuted}
-                  keyboardType="numeric"
-                  value={stockAmount}
-                  onChangeText={setStockAmount}
-                />
-                <Text style={styles.currencySymbol}>FCFA</Text>
-              </View>
-
-              <View style={styles.suggestionsRow}>
-                {['500', '1000', '2000', '5000', '10000', '20000'].map((sug) => (
-                  <TouchableOpacity
-                    key={sug}
-                    style={[styles.chip, stockAmount === sug && styles.chipActive]}
-                    onPress={() => setStockAmount(sug)}
-                    activeOpacity={0.75}
-                  >
-                    <Text style={[styles.chipText, stockAmount === sug && styles.chipTextActive]}>
-                      {parseInt(sug, 10).toLocaleString()}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              <TouchableOpacity
-                style={[
-                  styles.actionButton,
-                  { backgroundColor: COLORS.teal },
-                  (!stockAmount || parseInt(stockAmount, 10) <= 0) && styles.actionButtonDisabled,
-                ]}
-                onPress={handleBuyStock}
-                disabled={!stockAmount || parseInt(stockAmount, 10) <= 0}
-                activeOpacity={0.85}
-                accessibilityRole="button"
-                accessibilityLabel="Recharger le stock"
-              >
-                <Text style={styles.actionButtonText}>
-                  Recharger {stockAmount ? `${parseInt(stockAmount, 10).toLocaleString()} FCFA` : ''}
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.infoCard}>
-              <Text style={styles.infoTitle}>ℹ️ À propos du stock</Text>
-              <Text style={styles.infoText}>• Le montant est prélevé de votre solde Albey</Text>
-              <Text style={styles.infoText}>• Le stock est disponible immédiatement</Text>
-              <Text style={styles.infoText}>• Utilisez-le pour vos opérations d'envoi de crédit</Text>
+            <View style={styles.suggestionsRow}>
+              {['500', '1000', '2000', '5000', '10000', '20000'].map((sug) => (
+                <TouchableOpacity
+                  key={sug}
+                  style={[styles.suggestionChip, stockAmount === sug && styles.suggestionChipActive]}
+                  onPress={() => {
+                    hapticTap('light');
+                    setStockAmount(sug);
+                  }}
+                  activeOpacity={0.75}
+                >
+                  <Text style={[styles.suggestionText, stockAmount === sug && styles.suggestionTextActive]}>
+                    {parseInt(sug, 10).toLocaleString()}
+                  </Text>
+                </TouchableOpacity>
+              ))}
             </View>
           </>
         )}
@@ -1248,132 +1423,99 @@ export default function ShopScreen({ navigation }) {
         {/* ═══════════ CATÉGORIE : CRÉDIT ═══════════ */}
         {selectedCategory === 'credit' && (
           <>
-            <View style={styles.sectionHeader}>
-              <View style={styles.sectionAccent} />
-              <Text style={styles.sectionLabel}>Recharger du crédit</Text>
-            </View>
+            <Text style={styles.label}>Mode</Text>
 
-            <View style={styles.card}>
-              <View style={styles.cardIconWrapper}>
-                <View style={[styles.cardIconCircle, { backgroundColor: COLORS.accentSoft }]}>
-                  <IconCredit size={34} />
-                </View>
-              </View>
-
-              <Text style={styles.cardTitle}>Crédit téléphonique</Text>
-              <Text style={styles.cardSubtitle}>
-                Rechargez votre crédit ou celui d'un proche en quelques secondes
-              </Text>
-
-              <View style={styles.modeToggle}>
-                <TouchableOpacity
-                  style={[styles.modeBtn, airtimeMode === 'self' && styles.modeBtnActive]}
-                  onPress={() => setAirtimeMode('self')}
-                  activeOpacity={0.85}
-                >
-                  <IconUser color={airtimeMode === 'self' ? '#FFFFFF' : COLORS.textMuted} />
-                  <Text style={[styles.modeText, airtimeMode === 'self' && styles.modeTextActive]}>
-                    Pour moi
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.modeBtn, airtimeMode === 'other' && styles.modeBtnActive]}
-                  onPress={() => setAirtimeMode('other')}
-                  activeOpacity={0.85}
-                >
-                  <IconUsers color={airtimeMode === 'other' ? '#FFFFFF' : COLORS.textMuted} />
-                  <Text style={[styles.modeText, airtimeMode === 'other' && styles.modeTextActive]}>
-                    Pour un autre
-                  </Text>
-                </TouchableOpacity>
-              </View>
-
-              {airtimeMode === 'other' && (
-                <View style={styles.fieldBlock}>
-                  <Text style={styles.inputLabel}>📱 Numéro du bénéficiaire</Text>
-                  <View style={styles.phoneInputWrapper}>
-                    <Text style={styles.phonePrefix}>+227</Text>
-                    <TextInput
-                      style={styles.phoneInput}
-                      placeholder="Numéro du bénéficiaire"
-                      placeholderTextColor={COLORS.textMuted}
-                      keyboardType="phone-pad"
-                      value={airtimeTargetPhone}
-                      onChangeText={setAirtimeTargetPhone}
-                      maxLength={20}
-                    />
-                  </View>
-                  {airtimeTargetPhone.length > 0 && !airtimeOtherValid && (
-                    <Text style={styles.fieldHint}>
-                      Format attendu : commence par 83 ou 93, suivi de 6 chiffres.
-                    </Text>
-                  )}
-                </View>
-              )}
-
-              <View style={styles.fieldBlock}>
-                <Text style={styles.inputLabel}>💵 Montant à recharger</Text>
-                <View style={styles.amountInputWrapper}>
-                  <TextInput
-                    style={styles.amountInput}
-                    placeholder="0"
-                    placeholderTextColor={COLORS.textMuted}
-                    keyboardType="numeric"
-                    value={airtimeAmount}
-                    onChangeText={setAirtimeAmount}
-                  />
-                  <Text style={[styles.currencySymbol, { color: COLORS.accent }]}>FCFA</Text>
-                </View>
-              </View>
-
-              <View style={styles.suggestionsRow}>
-                {['100', '200', '500', '1000', '2000', '5000'].map((sug) => (
-                  <TouchableOpacity
-                    key={sug}
-                    style={[
-                      styles.chip,
-                      airtimeAmount === sug && { backgroundColor: COLORS.accent, borderColor: COLORS.accent },
-                    ]}
-                    onPress={() => setAirtimeAmount(sug)}
-                    activeOpacity={0.75}
-                  >
-                    <Text style={[styles.chipText, airtimeAmount === sug && styles.chipTextActive]}>
-                      {parseInt(sug, 10).toLocaleString()}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+            <View style={styles.modeToggle}>
+              <TouchableOpacity
+                style={[styles.modeBtn, airtimeMode === 'self' && styles.modeBtnActive]}
+                onPress={() => setAirtimeMode('self')}
+                activeOpacity={0.85}
+              >
+                <IconUser color={airtimeMode === 'self' ? '#FFFFFF' : COLORS.textMuted} />
+                <Text style={[styles.modeText, airtimeMode === 'self' && styles.modeTextActive]}>
+                  Pour moi
+                </Text>
+              </TouchableOpacity>
 
               <TouchableOpacity
-                style={[
-                  styles.actionButton,
-                  { backgroundColor: COLORS.accent },
-                  !isAirtimeReady && styles.actionButtonDisabled,
-                ]}
-                onPress={handleBuyAirtime}
-                disabled={!isAirtimeReady}
+                style={[styles.modeBtn, airtimeMode === 'other' && styles.modeBtnActive]}
+                onPress={() => setAirtimeMode('other')}
                 activeOpacity={0.85}
-                accessibilityRole="button"
-                accessibilityLabel={airtimeMode === 'other' ? 'Envoyer le crédit' : 'Recharger le crédit'}
               >
-                <Text style={styles.actionButtonText}>
-                  {airtimeMode === 'other'
-                    ? `Envoyer ${airtimeAmount ? `${parseInt(airtimeAmount, 10).toLocaleString()} FCFA` : ''}`
-                    : `Recharger ${airtimeAmount ? `${parseInt(airtimeAmount, 10).toLocaleString()} FCFA` : ''}`}
+                <IconUsers color={airtimeMode === 'other' ? '#FFFFFF' : COLORS.textMuted} />
+                <Text style={[styles.modeText, airtimeMode === 'other' && styles.modeTextActive]}>
+                  Pour un autre
                 </Text>
               </TouchableOpacity>
             </View>
 
-            <View style={styles.infoCard}>
-              <Text style={styles.infoTitle}>ℹ️ À propos du crédit</Text>
-              <Text style={styles.infoText}>• Le montant est prélevé de votre solde Albey</Text>
-              <Text style={styles.infoText}>• Le crédit est disponible immédiatement</Text>
-              <Text style={styles.infoText}>
-                • {airtimeMode === 'other'
-                    ? 'Le bénéficiaire doit être un numéro NT (83 ou 93)'
-                    : 'Utilisez-le pour vos appels, SMS et internet'}
-              </Text>
+            {airtimeMode === 'other' && (
+              <>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                  <Text style={[styles.label, { marginBottom: 0 }]}>Numéro du bénéficiaire</Text>
+                  <TouchableOpacity
+                    onPress={async () => {
+                      const picked = await pickPhoneContact({ showToast });
+                      if (picked?.phone) setAirtimeTargetPhone(picked.phone);
+                    }}
+                    style={{ backgroundColor: COLORS.primarySoft, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10 }}
+                    activeOpacity={0.75}
+                  >
+                    <Text style={{ color: COLORS.primary, fontSize: 12, fontWeight: '700' }}>📒 Répertoire</Text>
+                  </TouchableOpacity>
+                </View>
+                <View style={styles.inputWrapper}>
+                  <View style={styles.phonePrefix}>
+                    <Text style={styles.phonePrefixText}>+227</Text>
+                  </View>
+                  <TextInput
+                    style={styles.inputField}
+                    placeholder="Numéro du bénéficiaire"
+                    placeholderTextColor={COLORS.textMuted}
+                    keyboardType="phone-pad"
+                    value={airtimeTargetPhone}
+                    onChangeText={setAirtimeTargetPhone}
+                    maxLength={20}
+                  />
+                </View>
+                {airtimeTargetPhone.length > 0 && !airtimeOtherValid && (
+                  <Text style={styles.fieldHint}>
+                    Format attendu : 83 ou 93 + 6 chiffres.
+                  </Text>
+                )}
+                <RecentNumbersBar
+                  onSelectNumber={(num) => setAirtimeTargetPhone(num)}
+                  currentValue={airtimeTargetPhone}
+                  filterPrefix={['83', '93']}
+                />
+              </>
+            )}
+
+            <Text style={[styles.label, { marginTop: 24 }]}>Montant</Text>
+
+            {renderAmountZone({
+              value: airtimeAmount,
+              onChange: setAirtimeAmount,
+              inputRef: airtimeAmountInputRef,
+              placeholder: 'Combien ?',
+            })}
+
+            <View style={styles.suggestionsRow}>
+              {['100', '200', '500', '1000', '2000', '5000'].map((sug) => (
+                <TouchableOpacity
+                  key={sug}
+                  style={[styles.suggestionChip, airtimeAmount === sug && styles.suggestionChipActive]}
+                  onPress={() => {
+                    hapticTap('light');
+                    setAirtimeAmount(sug);
+                  }}
+                  activeOpacity={0.75}
+                >
+                  <Text style={[styles.suggestionText, airtimeAmount === sug && styles.suggestionTextActive]}>
+                    {parseInt(sug, 10).toLocaleString()}
+                  </Text>
+                </TouchableOpacity>
+              ))}
             </View>
           </>
         )}
@@ -1381,106 +1523,69 @@ export default function ShopScreen({ navigation }) {
         {/* ═══════════ CATÉGORIE : SOFTPHONE ═══════════ */}
         {selectedCategory === 'softphone' && (
           <>
-            <View style={styles.sectionHeader}>
-              <View style={styles.sectionAccent} />
-              <Text style={styles.sectionLabel}>Recharger du Softphone</Text>
-            </View>
-
-            <View style={styles.card}>
-              <View style={styles.cardIconWrapper}>
-                <View style={[styles.cardIconCircle, { backgroundColor: COLORS.purpleSoft }]}>
-                  <IconSoftphone size={34} />
-                </View>
-              </View>
-
-              <Text style={styles.cardTitle}>Crédit Softphone</Text>
-              <Text style={styles.cardSubtitle}>
-                Rechargez le crédit Softphone d'un numéro NT (pour appels via Softphone NT)
-              </Text>
-
-              <View style={styles.fieldBlock}>
-                <Text style={styles.inputLabel}>📱 Numéro du bénéficiaire</Text>
-                <View style={styles.phoneInputWrapper}>
-                  <Text style={[styles.phonePrefix, {
-                    color: COLORS.purple,
-                    backgroundColor: COLORS.purpleSoft,
-                    borderRightColor: COLORS.purple + '30',
-                  }]}>
-                    +227
-                  </Text>
-                  <TextInput
-                    style={styles.phoneInput}
-                    placeholder="Numéro du bénéficiaire"
-                    placeholderTextColor={COLORS.textMuted}
-                    keyboardType="phone-pad"
-                    value={softphoneTargetPhone}
-                    onChangeText={setSoftphoneTargetPhone}
-                    maxLength={20}
-                  />
-                </View>
-                {softphoneTargetPhone.length > 0 && !softphoneValid && (
-                  <Text style={styles.fieldHint}>
-                    Format attendu : commence par 83 ou 93, suivi de 6 chiffres.
-                  </Text>
-                )}
-              </View>
-
-              <View style={styles.fieldBlock}>
-                <Text style={styles.inputLabel}>💵 Montant à recharger</Text>
-                <View style={styles.amountInputWrapper}>
-                  <TextInput
-                    style={styles.amountInput}
-                    placeholder="0"
-                    placeholderTextColor={COLORS.textMuted}
-                    keyboardType="numeric"
-                    value={softphoneAmount}
-                    onChangeText={setSoftphoneAmount}
-                  />
-                  <Text style={[styles.currencySymbol, { color: COLORS.purple }]}>FCFA</Text>
-                </View>
-              </View>
-
-              <View style={styles.suggestionsRow}>
-                {['500', '1000', '2000', '5000', '10000', '20000'].map((sug) => (
-                  <TouchableOpacity
-                    key={sug}
-                    style={[
-                      styles.chip,
-                      softphoneAmount === sug && { backgroundColor: COLORS.purple, borderColor: COLORS.purple },
-                    ]}
-                    onPress={() => setSoftphoneAmount(sug)}
-                    activeOpacity={0.75}
-                  >
-                    <Text style={[styles.chipText, softphoneAmount === sug && styles.chipTextActive]}>
-                      {parseInt(sug, 10).toLocaleString()}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+              <Text style={[styles.label, { marginBottom: 0 }]}>Numéro du bénéficiaire</Text>
               <TouchableOpacity
-                style={[
-                  styles.actionButton,
-                  { backgroundColor: COLORS.purple },
-                  !isSoftphoneReady && styles.actionButtonDisabled,
-                ]}
-                onPress={handleBuySoftphone}
-                disabled={!isSoftphoneReady}
-                activeOpacity={0.85}
-                accessibilityRole="button"
-                accessibilityLabel="Envoyer le crédit Softphone"
+                onPress={async () => {
+                  const picked = await pickPhoneContact({ showToast });
+                  if (picked?.phone) setSoftphoneTargetPhone(picked.phone);
+                }}
+                style={{ backgroundColor: COLORS.primarySoft, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10 }}
+                activeOpacity={0.75}
               >
-                <Text style={styles.actionButtonText}>
-                  Envoyer {softphoneAmount ? `${parseInt(softphoneAmount, 10).toLocaleString()} FCFA` : ''}
-                </Text>
+                <Text style={{ color: COLORS.primary, fontSize: 12, fontWeight: '700' }}>📒 Répertoire</Text>
               </TouchableOpacity>
             </View>
+            <View style={styles.inputWrapper}>
+              <View style={styles.phonePrefix}>
+                <Text style={styles.phonePrefixText}>+227</Text>
+              </View>
+              <TextInput
+                style={styles.inputField}
+                placeholder="Numéro du bénéficiaire"
+                placeholderTextColor={COLORS.textMuted}
+                keyboardType="phone-pad"
+                value={softphoneTargetPhone}
+                onChangeText={setSoftphoneTargetPhone}
+                maxLength={20}
+              />
+            </View>
+            {softphoneTargetPhone.length > 0 && !softphoneValid && (
+              <Text style={styles.fieldHint}>
+                Format attendu : 83 ou 93 + 6 chiffres.
+              </Text>
+            )}
+            <RecentNumbersBar
+              onSelectNumber={(num) => setSoftphoneTargetPhone(num)}
+              currentValue={softphoneTargetPhone}
+              filterPrefix={['83', '93']}
+            />
 
-            <View style={styles.infoCard}>
-              <Text style={styles.infoTitle}>ℹ️ À propos du Softphone</Text>
-              <Text style={styles.infoText}>• Le montant est prélevé de votre solde Albey</Text>
-              <Text style={styles.infoText}>• Le crédit est disponible immédiatement</Text>
-              <Text style={styles.infoText}>• Le bénéficiaire doit être un numéro Niger Télécoms</Text>
+            <Text style={[styles.label, { marginTop: 24 }]}>Montant</Text>
+
+            {renderAmountZone({
+              value: softphoneAmount,
+              onChange: setSoftphoneAmount,
+              inputRef: softphoneAmountInputRef,
+              placeholder: 'Combien ?',
+            })}
+
+            <View style={styles.suggestionsRow}>
+              {['500', '1000', '2000', '5000', '10000', '20000'].map((sug) => (
+                <TouchableOpacity
+                  key={sug}
+                  style={[styles.suggestionChip, softphoneAmount === sug && styles.suggestionChipActive]}
+                  onPress={() => {
+                    hapticTap('light');
+                    setSoftphoneAmount(sug);
+                  }}
+                  activeOpacity={0.75}
+                >
+                  <Text style={[styles.suggestionText, softphoneAmount === sug && styles.suggestionTextActive]}>
+                    {parseInt(sug, 10).toLocaleString()}
+                  </Text>
+                </TouchableOpacity>
+              ))}
             </View>
           </>
         )}
@@ -1488,75 +1593,44 @@ export default function ShopScreen({ navigation }) {
         {/* ═══════════ CATÉGORIE : BLR ═══════════ */}
         {selectedCategory === 'blr' && (
           <>
-            <View style={styles.sectionHeader}>
-              <View style={[styles.sectionAccent, { backgroundColor: COLORS.sky }]} />
-              <Text style={styles.sectionLabel}>Boucle Locale Radio</Text>
+            <Text style={styles.label}>Numéro BLR</Text>
+            <View style={styles.inputWrapper}>
+              <View style={[styles.phonePrefix, { backgroundColor: COLORS.skySoft }]}>
+                <Text style={[styles.phonePrefixText, { color: COLORS.sky }]}>BLR</Text>
+              </View>
+              <TextInput
+                style={styles.inputField}
+                placeholder="Ex : BLR0000NY"
+                placeholderTextColor={COLORS.textMuted}
+                autoCapitalize="characters"
+                autoCorrect={false}
+                value={blrNumber}
+                onChangeText={(t) => {
+                  setBlrNumber(t);
+                  if (blrResult) setBlrResult(null);
+                  if (blrError)  setBlrError(null);
+                }}
+                maxLength={20}
+                editable={!blrLoading}
+              />
             </View>
 
-            <View style={styles.card}>
-              <View style={styles.cardIconWrapper}>
-                <View style={[styles.cardIconCircle, { backgroundColor: COLORS.skySoft }]}>
-                  <IconBLR size={34} />
-                </View>
-              </View>
-
-              <Text style={styles.cardTitle}>Abonnement BLR</Text>
-              <Text style={styles.cardSubtitle}>
-                Vérifiez votre abonnement BLR puis réabonnez-vous en quelques secondes.
-              </Text>
-
-              <View style={styles.fieldBlock}>
-                <Text style={styles.inputLabel}>📡 Numéro BLR</Text>
-                <View style={styles.phoneInputWrapper}>
-                  <Text
-                    style={[
-                      styles.phonePrefix,
-                      {
-                        color: COLORS.sky,
-                        backgroundColor: COLORS.skySoft,
-                        borderRightColor: COLORS.sky + '30',
-                      },
-                    ]}
-                  >
-                    BLR
-                  </Text>
-                  <TextInput
-                    style={styles.phoneInput}
-                    placeholder="Ex : BLR0000NY"
-                    placeholderTextColor={COLORS.textMuted}
-                    autoCapitalize="characters"
-                    autoCorrect={false}
-                    value={blrNumber}
-                    onChangeText={(t) => {
-                      setBlrNumber(t);
-                      if (blrResult) setBlrResult(null);
-                      if (blrError)  setBlrError(null);
-                    }}
-                    maxLength={20}
-                    editable={!blrLoading}
-                  />
-                </View>
-              </View>
-
-              <TouchableOpacity
-                style={[
-                  styles.actionButton,
-                  { backgroundColor: COLORS.sky },
-                  (!blrNumber.trim() || blrLoading) && styles.actionButtonDisabled,
-                ]}
-                onPress={handleCheckBLR}
-                disabled={!blrNumber.trim() || blrLoading}
-                activeOpacity={0.85}
-                accessibilityRole="button"
-                accessibilityLabel="Vérifier l'abonnement BLR"
-              >
-                {blrLoading ? (
-                  <ActivityIndicator color="#FFFFFF" size="small" />
-                ) : (
-                  <Text style={styles.actionButtonText}>Vérifier l'abonnement</Text>
-                )}
-              </TouchableOpacity>
-            </View>
+            <TouchableOpacity
+              style={[
+                styles.actionButton,
+                { backgroundColor: COLORS.sky, marginTop: 16 },
+                (!blrNumber.trim() || blrLoading) && styles.actionButtonDisabled,
+              ]}
+              onPress={handleCheckBLR}
+              disabled={!blrNumber.trim() || blrLoading}
+              activeOpacity={0.85}
+            >
+              {blrLoading ? (
+                <ActivityIndicator color="#FFFFFF" size="small" />
+              ) : (
+                <Text style={styles.actionButtonText}>Vérifier l'abonnement</Text>
+              )}
+            </TouchableOpacity>
 
             {blrError && (
               <View style={styles.blrErrorCard}>
@@ -1598,10 +1672,7 @@ export default function ShopScreen({ navigation }) {
                     style={[
                       styles.blrRowValue,
                       {
-                        color:
-                          Number(blrResult.facture || 0) > 0
-                            ? COLORS.danger
-                            : COLORS.success,
+                        color: Number(blrResult.facture || 0) > 0 ? COLORS.danger : COLORS.success,
                       },
                     ]}
                   >
@@ -1613,8 +1684,6 @@ export default function ShopScreen({ navigation }) {
                   style={[styles.actionButton, { backgroundColor: COLORS.primary, marginTop: 8 }]}
                   onPress={handleResubscribeBLR}
                   activeOpacity={0.85}
-                  accessibilityRole="button"
-                  accessibilityLabel="Réabonner la BLR"
                 >
                   <Text style={styles.actionButtonText}>
                     Réabonner
@@ -1625,230 +1694,374 @@ export default function ShopScreen({ navigation }) {
                 </TouchableOpacity>
               </View>
             )}
-
-            <View style={styles.infoCard}>
-              <Text style={styles.infoTitle}>ℹ️ À propos de la BLR</Text>
-              <Text style={styles.infoText}>
-                • La BLR (Boucle Locale Radio) est un service Internet haut débit NT
-              </Text>
-              <Text style={styles.infoText}>
-                • Saisissez votre numéro BLR (ex : BLR0000NY) pour vérifier votre abonnement
-              </Text>
-              <Text style={styles.infoText}>
-                • Vous pourrez ensuite procéder au réabonnement en toute sécurité
-              </Text>
-            </View>
           </>
         )}
 
       </ScrollView>
 
-      {/* ═══════════ MODAL DE CONFIRMATION ═══════════ */}
+      {/* ═══════════ CTA FIXE EN BAS (Stock / Crédit / Softphone) ═══════════ */}
+      {selectedCategory && selectedCategory !== 'blr' && !pinRequired && (
+        <View style={[styles.ctaContainer, { paddingBottom: Math.max(insets.bottom, 14) + 12 }]}>
+          <TouchableOpacity
+            style={[styles.cta, !isCategoryCtaReady() && styles.ctaDisabled]}
+            onPress={handleCategoryCta}
+            disabled={!isCategoryCtaReady()}
+            activeOpacity={0.85}
+          >
+            {isProcessing || isVerifyingAuth ? (
+              <View style={styles.ctaContent}>
+                <ActivityIndicator color="#FFFFFF" size="small" />
+                <Text style={styles.ctaText}>
+                  {isProcessing ? 'Traitement…' : 'Vérification…'}
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.ctaContent}>
+                {isBiometricAvailable && useBiometric && isCategoryCtaReady() && (
+                  <IconFingerprint color="#FFFFFF" size={20} />
+                )}
+                <Text style={[styles.ctaText, !isCategoryCtaReady() && styles.ctaTextDisabled]}>
+                  {getCategoryCtaLabel()}
+                </Text>
+              </View>
+            )}
+          </TouchableOpacity>
+
+          {getCategoryCtaHint() ? (
+            <Text style={styles.ctaHintText}>{getCategoryCtaHint()}</Text>
+          ) : null}
+        </View>
+      )}
+
+      {/* ═══════════════════════════════════════════════════
+          MODAL DE CONFIRMATION (bottom sheet)
+          ═══════════════════════════════════════════════════ */}
       <Modal
         animationType="slide"
         transparent={true}
         visible={modalVisible}
-        onRequestClose={closeModal}
+        onRequestClose={closeConfirmModal}
       >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { width: modalWidth }]}>
-            <View style={styles.modalIconWrapper}>
-              <View
-                style={[
-                  styles.modalIconCircle,
-                  {
-                    backgroundColor: selectedProduct?.isBLRResubscribe
-                      ? COLORS.skySoft
-                      : COLORS.primarySoft,
-                  },
-                ]}
+        <View style={styles.sheetOverlay}>
+          <TouchableOpacity
+            style={styles.sheetBackdrop}
+            onPress={closeConfirmModal}
+            activeOpacity={1}
+          />
+          <Animated.View
+            style={[
+              styles.confirmSheetContent,
+              { maxHeight: height * 0.92, transform: [{ translateY: sheetTranslateY }] },
+            ]}
+            {...sheetPanResponder.panHandlers}
+          >
+            <View style={styles.sheetHandle} />
+
+            <View style={styles.confirmHeader}>
+              <Text style={styles.confirmTitle}>
+                {selectedProduct?.isBLRResubscribe
+                  ? 'Confirmer le réabonnement'
+                  : selectedProduct?.isForOther || selectedProduct?.isSoftphone
+                    ? 'Confirmer l\'envoi'
+                    : 'Confirmer l\'achat'}
+              </Text>
+              <TouchableOpacity
+                onPress={closeConfirmModal}
+                style={styles.sheetCloseBtn}
+                activeOpacity={0.7}
               >
-                {selectedProduct?.isBLRResubscribe ? <IconBLR size={40} /> : <IconShop size={54} />}
-              </View>
+                <IconClose />
+              </TouchableOpacity>
             </View>
 
-            <Text style={styles.modalTitle}>
-              {selectedProduct?.isBLRResubscribe
-                ? 'Confirmer le réabonnement'
-                : selectedProduct?.isForOther || selectedProduct?.isSoftphone
-                  ? 'Confirmer l\'envoi'
-                  : 'Confirmer l\'achat'}
-            </Text>
-            <Text style={styles.modalSubtitle}>{selectedProduct?.name}</Text>
-            <Text style={styles.modalPrice}>
-              {selectedProduct?.finalAmount?.toLocaleString()} FCFA
-            </Text>
-
-            {(selectedProduct?.isForOther || selectedProduct?.isSoftphone) && (
-              <View style={styles.modalPhoneWrapper}>
-                <Text style={styles.modalPhone}>
-                  Destinataire : +227 {selectedProduct.phoneNumber}
-                </Text>
-              </View>
-            )}
-
-            {selectedProduct?.isBLRResubscribe && (
-              <View style={styles.modalPhoneWrapper}>
-                <Text style={styles.modalPhone}>
-                  Abonnement : {selectedProduct.blrNumber}
-                </Text>
-              </View>
-            )}
-
-            {isBiometricAvailable && useBiometric ? (
-              <>
-                <Text style={styles.modalLabel}>
-                  Confirmez avec votre empreinte digitale
-                </Text>
-
-                <TouchableOpacity
-                  style={styles.biometricButton}
-                  onPress={authenticateWithBiometrics}
-                  activeOpacity={0.75}
-                  disabled={isProcessing || isVerifyingAuth}
-                >
-                  {isProcessing || isVerifyingAuth ? (
-                    <ActivityIndicator color={COLORS.primary} size="small" />
-                  ) : (
-                    <Image
-                      source={require('../assets/images/print.png')}
-                      style={styles.biometricIcon}
-                    />
-                  )}
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.confirmButton}
-                  onPress={authenticateWithBiometrics}
-                  disabled={isProcessing || isVerifyingAuth}
-                  activeOpacity={0.85}
-                  accessibilityRole="button"
-                  accessibilityLabel="Confirmer avec l'empreinte"
-                >
-                  {isProcessing || isVerifyingAuth ? (
-                    <ActivityIndicator color="#FFFFFF" size="small" />
-                  ) : (
-                    <Text style={styles.confirmButtonText}>Confirmer</Text>
-                  )}
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.switchMethodButton}
-                  onPress={() => setUseBiometric(false)}
-                  disabled={isProcessing || isVerifyingAuth}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.switchMethodText}>🔑 Utiliser mon mot de passe</Text>
-                </TouchableOpacity>
-              </>
-            ) : (
-              <>
-                <Text style={styles.modalLabel}>
-                  Entrez votre mot de passe (8 à 20 caractères)
-                </Text>
-
-                <View style={styles.pinInputWrapper}>
-                  <TextInput
-                    style={styles.pinInput}
-                    placeholder="••••••••"
-                    placeholderTextColor={COLORS.textMuted}
-                    keyboardType="default"
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    secureTextEntry={!pinVisible}
-                    maxLength={20}
-                    value={pin}
-                    onChangeText={setPin}
-                    textAlign="center"
-                    editable={!isProcessing && !isVerifyingAuth}
-                  />
-                  <TouchableOpacity
-                    style={styles.pinEyeButton}
-                    onPress={() => setPinVisible((v) => !v)}
-                    disabled={isProcessing || isVerifyingAuth}
-                    activeOpacity={0.7}
-                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                  >
-                    {pinVisible ? <IconEyeOpen /> : <IconEyeClosed />}
-                  </TouchableOpacity>
-                </View>
-
-                <TouchableOpacity
-                  style={styles.pinToggleLabelWrapper}
-                  onPress={() => setPinVisible((v) => !v)}
-                  disabled={isProcessing || isVerifyingAuth}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.pinToggleLabelText}>
-                    {pinVisible ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
-                  </Text>
-                </TouchableOpacity>
-
-                {isBiometricAvailable && (
-                  <TouchableOpacity
-                    style={styles.switchMethodButton}
-                    onPress={() => setUseBiometric(true)}
-                    disabled={isProcessing || isVerifyingAuth}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={styles.switchMethodText}>👆 Utiliser mon empreinte</Text>
-                  </TouchableOpacity>
-                )}
-
-                <TouchableOpacity
-                  style={styles.confirmButton}
-                  onPress={confirmWithPin}
-                  disabled={isProcessing || isVerifyingAuth}
-                  activeOpacity={0.85}
-                  accessibilityRole="button"
-                  accessibilityLabel="Confirmer avec le mot de passe"
-                >
-                  {isProcessing || isVerifyingAuth ? (
-                    <ActivityIndicator color="#FFFFFF" size="small" />
-                  ) : (
-                    <Text style={styles.confirmButtonText}>Confirmer</Text>
-                  )}
-                </TouchableOpacity>
-              </>
-            )}
-
-            <TouchableOpacity
-              style={styles.cancelButton}
-              onPress={closeModal}
-              disabled={isProcessing || isVerifyingAuth}
-              activeOpacity={0.75}
-              accessibilityRole="button"
-              accessibilityLabel="Annuler l'achat"
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={{ paddingBottom: 20 }}
             >
-              <Text style={styles.cancelButtonText}>
-                {isProcessing || isVerifyingAuth ? 'Traitement en cours…' : 'Annuler'}
+              <View style={styles.confirmIconWrapper}>
+                <View
+                  style={[
+                    styles.confirmIconCircle,
+                    {
+                      backgroundColor: selectedProduct?.isBLRResubscribe
+                        ? COLORS.skySoft
+                        : COLORS.primarySoft,
+                    },
+                  ]}
+                >
+                  {selectedProduct?.isBLRResubscribe ? <IconBLR size={36} /> : <IconShop size={48} />}
+                </View>
+              </View>
+
+              <Text style={styles.confirmProductName}>{selectedProduct?.name}</Text>
+              <Text style={styles.confirmAmount}>
+                {selectedProduct?.finalAmount?.toLocaleString()} FCFA
               </Text>
-            </TouchableOpacity>
-          </View>
+
+              {(selectedProduct?.isForOther || selectedProduct?.isSoftphone) && (
+                <View style={styles.confirmInfoBox}>
+                  <View style={styles.confirmInfoRow}>
+                    <Text style={styles.confirmInfoLabel}>📱 Destinataire</Text>
+                    <Text style={styles.confirmInfoValue}>
+                      +227 {selectedProduct.phoneNumber}
+                    </Text>
+                  </View>
+                </View>
+              )}
+
+              {selectedProduct?.isBLRResubscribe && (
+                <View style={styles.confirmInfoBox}>
+                  <View style={styles.confirmInfoRow}>
+                    <Text style={styles.confirmInfoLabel}>📡 Abonnement</Text>
+                    <Text style={styles.confirmInfoValue}>
+                      {selectedProduct.blrNumber}
+                    </Text>
+                  </View>
+                </View>
+              )}
+
+              {/* PIN inline */}
+              {pinRequired && (
+                <View style={styles.pinInline}>
+                  <View style={styles.pinInlineHeader}>
+                    <Text style={styles.pinInlineLabel}>
+                      {isBiometricAvailable && pinRequired
+                        ? 'Empreinte indisponible — entrez votre mot de passe'
+                        : 'Confirmez avec votre mot de passe'}
+                    </Text>
+                    <Text style={styles.pinInlineCounter}>{pin.length}/20</Text>
+                  </View>
+                  <View style={styles.pinInlineRow}>
+                    <TextInput
+                      ref={pinInputRef}
+                      style={styles.pinInlineInput}
+                      placeholder="••••••••"
+                      placeholderTextColor={COLORS.textMuted}
+                      secureTextEntry={!pinVisible}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      maxLength={20}
+                      value={pin}
+                      onChangeText={setPin}
+                      editable={!isProcessing && !isVerifyingAuth}
+                      textAlign="center"
+                    />
+                    <TouchableOpacity
+                      style={styles.pinInlineEye}
+                      onPress={() => setPinVisible(v => !v)}
+                      activeOpacity={0.7}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    >
+                      {pinVisible ? <IconEyeOpen /> : <IconEyeClosed />}
+                    </TouchableOpacity>
+                  </View>
+                  <View style={styles.pinInlineActions}>
+                    <TouchableOpacity
+                      style={styles.pinInlineCancel}
+                      onPress={() => {
+                        setPinRequired(false);
+                        setPin('');
+                        Keyboard.dismiss();
+                      }}
+                      disabled={isProcessing || isVerifyingAuth}
+                      activeOpacity={0.75}
+                    >
+                      <Text style={styles.pinInlineCancelText}>Annuler</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[
+                        styles.pinInlineConfirm,
+                        (!pin || pin.length < 8 || isProcessing || isVerifyingAuth) && styles.pinInlineConfirmDisabled,
+                      ]}
+                      onPress={confirmWithPin}
+                      disabled={!pin || pin.length < 8 || isProcessing || isVerifyingAuth}
+                      activeOpacity={0.85}
+                    >
+                      {isProcessing || isVerifyingAuth ? (
+                        <ActivityIndicator color="#FFFFFF" size="small" />
+                      ) : (
+                        <Text style={styles.pinInlineConfirmText}>Confirmer</Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+
+              {!pinRequired && (
+                <TouchableOpacity
+                  style={[
+                    styles.confirmButton,
+                    (isProcessing || isVerifyingAuth) && styles.confirmButtonDisabled,
+                  ]}
+                  onPress={authenticateWithBiometrics}
+                  disabled={isProcessing || isVerifyingAuth}
+                  activeOpacity={0.85}
+                >
+                  {isProcessing || isVerifyingAuth ? (
+                    <ActivityIndicator color="#FFFFFF" size="small" />
+                  ) : (
+                    <View style={styles.confirmButtonContent}>
+                      {isBiometricAvailable && useBiometric && (
+                        <IconFingerprint color="#FFFFFF" size={20} />
+                      )}
+                      <Text style={styles.confirmButtonText}>Confirmer</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              )}
+
+              <TouchableOpacity
+                style={styles.cancelButton}
+                onPress={closeConfirmModal}
+                disabled={isProcessing || isVerifyingAuth}
+                activeOpacity={0.75}
+              >
+                <Text style={styles.cancelButtonText}>
+                  {isProcessing || isVerifyingAuth ? 'Traitement en cours…' : 'Annuler'}
+                </Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </Animated.View>
         </View>
       </Modal>
-    </View>
+
+    </KeyboardAvoidingView>
   );
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
-   STYLES
+   STYLES — HARMONISÉS
    ═══════════════════════════════════════════════════════════════════════ */
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
 
-  /* ─── Header ──────────────────────────────────────────────────── */
-  header: {
+  /* TOAST */
+  toastContainer: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? 60 : 40,
+    left: 20,
+    right: 20,
+    borderRadius: 16,
+    padding: 16,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    zIndex: 9999,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    elevation: 10,
+  },
+  toastIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  toastContent: { flex: 1 },
+  toastTitle: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '800',
+    marginBottom: 2,
+    letterSpacing: -0.2,
+  },
+  toastMessage: {
+    color: 'rgba(255,255,255,0.9)',
+    fontSize: 13,
+    fontWeight: '500',
+    lineHeight: 18,
+  },
+
+  /* Header */
+  header: {
     paddingHorizontal: 16,
     paddingTop: 52,
-    paddingBottom: 16,
+    paddingBottom: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  backButton: {
+    width: 44, height: 44, borderRadius: 22,
+    backgroundColor: COLORS.surfaceAlt,
+    alignItems: 'center', justifyContent: 'center',
+  },
+
+  /* Loading */
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  loadingText: {
+    marginTop: 14,
+    color: COLORS.textSecondary,
+    fontSize: 13,
+    fontWeight: '500',
+  },
+
+  /* Contenu */
+  scrollContent: {
+    paddingHorizontal: 24,
+    paddingTop: 8,
+    paddingBottom: 120,
+  },
+  label: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: COLORS.textMuted,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    marginBottom: 12,
+  },
+
+  /* Hero banner */
+  heroBanner: {
+    alignItems: 'center',
+    paddingVertical: 24,
+    marginBottom: 8,
+  },
+  heroIconWrap: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    backgroundColor: COLORS.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: COLORS.primary + '20',
+  },
+  heroTitle: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: COLORS.textPrimary,
+    letterSpacing: -0.5,
+    marginBottom: 4,
+  },
+  heroSubtitle: {
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    fontWeight: '500',
+  },
+
+  /* Categories grid */
+  categoriesGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    marginTop: 4,
+    marginBottom: 8,
+  },
+  categoryItem: {
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 10,
     backgroundColor: COLORS.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.borderSoft,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: COLORS.borderSoft,
     ...Platform.select({
       ios: {
         shadowColor: COLORS.shadow,
@@ -1856,265 +2069,195 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.04,
         shadowRadius: 8,
       },
-      android: { elevation: 2 },
+      android: { elevation: 1 },
     }),
   },
-  backButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    backgroundColor: COLORS.surfaceAlt,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: COLORS.borderSoft,
-  },
-  headerCenter: { flex: 1, alignItems: 'center' },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: COLORS.textPrimary,
-    letterSpacing: -0.3,
-  },
-  headerSubtitle: {
-    fontSize: 11,
-    color: COLORS.textMuted,
-    marginTop: 2,
-    fontWeight: '500',
-  },
-
-  /* ─── Loading ─────────────────────────────────────────────────── */
-  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  loadingText: {
-    marginTop: 16,
-    color: COLORS.textSecondary,
-    fontSize: 14,
-    fontWeight: '500',
-  },
-
-  scrollContent: { paddingBottom: 40 },
-
-  /* ─── Section header ──────────────────────────────────────────── */
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 20,
-    marginTop: 24,
-    marginBottom: 12,
-  },
-  sectionAccent: {
-    width: 4,
-    height: 18,
-    borderRadius: 2,
-    backgroundColor: COLORS.primary,
-  },
-  sectionLabel: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: COLORS.textPrimary,
-    letterSpacing: -0.2,
-  },
-
-  /* ─── Categories grid ─────────────────────────────────────────── */
-  categoriesGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    paddingHorizontal: 16,
-  },
-  categoryCard: {
-    alignItems: 'center',
-    backgroundColor: COLORS.surface,
-    paddingVertical: 18,
-    paddingHorizontal: 12,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: COLORS.borderSoft,
-    ...Platform.select({
-      ios: {
-        shadowColor: COLORS.shadow,
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.05,
-        shadowRadius: 12,
-      },
-      android: { elevation: 2 },
-    }),
-  },
-  categoryIcon: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
-  },
-  categoryName: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: COLORS.textPrimary,
-    textAlign: 'center',
-    letterSpacing: -0.1,
-  },
-  categoryDesc: {
-    fontSize: 11,
-    color: COLORS.textMuted,
-    textAlign: 'center',
-    marginTop: 4,
-    lineHeight: 15,
-    fontWeight: '500',
-  },
-
-  /* ─── Card ────────────────────────────────────────────────────── */
-  card: {
-    backgroundColor: COLORS.surface,
-    marginHorizontal: 16,
-    borderRadius: 20,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: COLORS.borderSoft,
-    ...Platform.select({
-      ios: {
-        shadowColor: COLORS.shadow,
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.05,
-        shadowRadius: 12,
-      },
-      android: { elevation: 2 },
-    }),
-  },
-  cardIconWrapper: { alignItems: 'center', marginBottom: 12 },
-  cardIconCircle: {
+  categoryHalo: {
     width: 64,
     height: 64,
     borderRadius: 32,
     alignItems: 'center',
     justifyContent: 'center',
+    marginBottom: 10,
   },
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: COLORS.textPrimary,
-    textAlign: 'center',
-    marginBottom: 6,
-    letterSpacing: -0.3,
-  },
-  cardSubtitle: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
-    textAlign: 'center',
-    marginBottom: 22,
-    lineHeight: 18,
-    fontWeight: '500',
-  },
-
-  /* ─── Inputs ──────────────────────────────────────────────────── */
-  inputLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: COLORS.textSecondary,
-    marginBottom: 8,
-    letterSpacing: 0.2,
-  },
-  amountInputWrapper: {
-    flexDirection: 'row',
+  categoryHaloInner: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     alignItems: 'center',
-    backgroundColor: COLORS.surfaceAlt,
-    borderRadius: 14,
-    paddingHorizontal: 16,
-    borderWidth: 1.5,
-    borderColor: COLORS.border,
-    height: 60,
+    justifyContent: 'center',
   },
-  amountInput: {
-    flex: 1,
-    fontSize: 24,
-    fontWeight: '800',
-    color: COLORS.textPrimary,
-    paddingVertical: 0,
-    letterSpacing: -0.5,
-  },
-  currencySymbol: {
+  categoryName: {
     fontSize: 13,
     fontWeight: '800',
-    color: COLORS.primary,
-    marginLeft: 8,
-    letterSpacing: 0.5,
+    color: COLORS.textPrimary,
+    textAlign: 'center',
+    letterSpacing: -0.1,
+    marginBottom: 3,
+  },
+  categoryDesc: {
+    fontSize: 10.5,
+    color: COLORS.textMuted,
+    textAlign: 'center',
+    lineHeight: 14,
+    fontWeight: '500',
+    paddingHorizontal: 4,
   },
 
-  /* ─── Phone ───────────────────────────────────────────────────── */
-  phoneInputWrapper: {
+  /* Zone montant premium */
+  amountWrapper: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 24,
+    paddingHorizontal: 16,
+    marginTop: 4,
+    borderRadius: 20,
+    borderWidth: 2,
+    borderColor: COLORS.border,
+    borderStyle: 'dashed',
+    backgroundColor: COLORS.surfaceAlt,
+    position: 'relative',
+    minHeight: 140,
+  },
+  amountWrapperFocused: {
+    borderColor: COLORS.primary,
+    borderStyle: 'solid',
+    backgroundColor: COLORS.primarySoft,
+  },
+  amountText: {
+    fontSize: 68,
+    fontWeight: '800',
+    color: COLORS.textPrimary,
+    letterSpacing: -3,
+    lineHeight: 76,
+    textAlign: 'center',
+    includeFontPadding: false,
+  },
+  amountEmptyState: {
+    fontSize: 34,
+    fontWeight: '700',
+    color: COLORS.textMuted,
+    letterSpacing: -0.5,
+    lineHeight: 44,
+    textAlign: 'center',
+  },
+  amountCurrency: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: COLORS.textMuted,
+    letterSpacing: 3,
+    textAlign: 'center',
+    marginTop: 4,
+  },
+  amountHiddenInput: {
+    position: 'absolute',
+    opacity: 0,
+    width: '100%',
+    height: '100%',
+    top: 0,
+    left: 0,
+  },
+  keyboardHintRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.surfaceAlt,
-    borderRadius: 14,
-    borderWidth: 1.5,
-    borderColor: COLORS.border,
+    gap: 6,
+    marginBottom: 10,
+  },
+  keyboardHintIcon: { fontSize: 14 },
+  keyboardHintLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.textMuted,
+    letterSpacing: 0.3,
+  },
+  customCaret: {
+    position: 'absolute',
+    width: 3,
     height: 56,
-    overflow: 'hidden',
-  },
-  phonePrefix: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: COLORS.accent,
-    paddingHorizontal: 14,
-    paddingVertical: 16,
-    backgroundColor: COLORS.accentSoft,
-    borderRightWidth: 1,
-    borderRightColor: COLORS.accent + '25',
-  },
-  phoneInput: {
-    flex: 1,
-    fontSize: 16,
-    fontWeight: '700',
-    color: COLORS.textPrimary,
-    paddingHorizontal: 14,
-    paddingVertical: 0,
-    letterSpacing: 0.5,
-  },
-  fieldBlock: { marginBottom: 16 },
-  fieldHint: {
-    fontSize: 11,
-    color: COLORS.danger,
-    marginTop: 6,
-    fontStyle: 'italic',
-    fontWeight: '500',
+    borderRadius: 2,
+    backgroundColor: COLORS.primary,
+    top: '50%',
+    marginTop: -28,
   },
 
-  /* ─── Chips ───────────────────────────────────────────────────── */
+  /* Chips suggestions */
   suggestionsRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
-    marginTop: 4,
-    marginBottom: 16,
+    justifyContent: 'center',
+    marginTop: 16,
   },
-  chip: {
+  suggestionChip: {
     paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 20,
+    paddingVertical: 8,
+    borderRadius: 16,
     backgroundColor: COLORS.surfaceAlt,
     borderWidth: 1.5,
     borderColor: COLORS.border,
   },
-  chipActive: {
+  suggestionChipActive: {
     backgroundColor: COLORS.primary,
     borderColor: COLORS.primary,
   },
-  chipText: {
-    fontSize: 12,
+  suggestionText: {
+    fontSize: 12.5,
     fontWeight: '700',
-    color: COLORS.textSecondary,
-    letterSpacing: -0.1,
+    color: COLORS.textPrimary,
   },
-  chipTextActive: { color: '#FFFFFF' },
+  suggestionTextActive: { color: '#FFFFFF' },
 
-  /* ─── Mode toggle ─────────────────────────────────────────────── */
+  /* Input */
+  inputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.surfaceAlt,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    marginBottom: 6,
+    paddingHorizontal: 4,
+  },
+  phonePrefix: {
+    paddingLeft: 12,
+    paddingRight: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: COLORS.primarySoft,
+    borderRadius: 10,
+    paddingVertical: 8,
+    marginVertical: 6,
+    marginLeft: 4,
+  },
+  phonePrefixText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: COLORS.primary,
+    letterSpacing: 0.5,
+  },
+  inputField: {
+    flex: 1,
+    paddingVertical: 15,
+    paddingHorizontal: 10,
+    fontSize: 15,
+    color: COLORS.textPrimary,
+    fontWeight: '600',
+  },
+  fieldHint: {
+    fontSize: 11,
+    color: COLORS.danger,
+    marginTop: 5,
+    fontStyle: 'italic',
+    fontWeight: '500',
+  },
+
+  /* Mode toggle */
   modeToggle: {
     flexDirection: 'row',
     backgroundColor: COLORS.surfaceAlt,
     borderRadius: 14,
-    padding: 4,
-    marginBottom: 18,
+    padding: 3,
+    marginBottom: 16,
     borderWidth: 1,
     borderColor: COLORS.borderSoft,
   },
@@ -2123,9 +2266,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
+    gap: 5,
     paddingVertical: 12,
-    borderRadius: 10,
+    borderRadius: 11,
   },
   modeBtnActive: { backgroundColor: COLORS.primary },
   modeText: {
@@ -2136,13 +2279,13 @@ const styles = StyleSheet.create({
   },
   modeTextActive: { color: '#FFFFFF' },
 
-  /* ─── Action button ───────────────────────────────────────────── */
+  /* Action button */
   actionButton: {
-    paddingVertical: 16,
-    borderRadius: 16,
+    paddingVertical: 14,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 8,
+    marginTop: 6,
     ...Platform.select({
       ios: {
         shadowColor: COLORS.shadow,
@@ -2162,119 +2305,181 @@ const styles = StyleSheet.create({
   },
   actionButtonText: {
     color: '#FFFFFF',
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '800',
     letterSpacing: 0.2,
   },
 
-  /* ─── Info card ───────────────────────────────────────────────── */
-  infoCard: {
-    backgroundColor: COLORS.primarySoft,
-    marginHorizontal: 16,
-    marginTop: 16,
-    marginBottom: 16,
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: COLORS.primary + '25',
+  /* CTA fixe */
+  ctaContainer: {
+    position: 'absolute',
+    left: 0, right: 0, bottom: 0,
+    paddingHorizontal: 24,
+    paddingBottom: Platform.OS === 'ios' ? 40 : 24,
+    paddingTop: 12,
+    backgroundColor: COLORS.background,
   },
-  infoTitle: {
-    fontSize: 13,
+  cta: {
+    backgroundColor: COLORS.primary,
+    borderRadius: 20,
+    paddingVertical: 20,
+    paddingHorizontal: 24,
+    ...Platform.select({
+      ios: { shadowColor: COLORS.primary, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.3, shadowRadius: 16 },
+      android: { elevation: 6 },
+    }),
+  },
+  ctaDisabled: {
+    backgroundColor: COLORS.surfaceAlt,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    ...Platform.select({ ios: { shadowOpacity: 0 }, android: { elevation: 0 } }),
+  },
+  ctaContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  ctaText: {
+    fontSize: 16,
     fontWeight: '800',
-    color: COLORS.primaryDark,
-    marginBottom: 10,
-    letterSpacing: -0.1,
+    color: '#FFFFFF',
+    letterSpacing: 0.3,
   },
-  infoText: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
-    marginBottom: 6,
-    lineHeight: 18,
+  ctaTextDisabled: { color: COLORS.textMuted },
+  ctaHintText: {
+    fontSize: 11.5,
+    color: COLORS.textMuted,
+    textAlign: 'center',
+    marginTop: 10,
     fontWeight: '500',
+    letterSpacing: 0.2,
+    paddingHorizontal: 8,
   },
 
-  /* ─── Modal ───────────────────────────────────────────────────── */
-  modalOverlay: {
+  /* Bottom sheet */
+  sheetOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(15,23,42,0.55)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 16,
+    backgroundColor: 'rgba(11,18,32,0.5)',
+    justifyContent: 'flex-end',
   },
-  modalContent: {
+  sheetBackdrop: { flex: 1 },
+  confirmSheetContent: {
     backgroundColor: COLORS.surface,
-    borderRadius: 24,
-    padding: 24,
-    alignItems: 'stretch',
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    paddingBottom: 24,
   },
-  modalIconWrapper: { alignItems: 'center', marginBottom: 12 },
-  modalIconCircle: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
+  sheetHandle: {
+    width: 40, height: 4, borderRadius: 2,
+    backgroundColor: COLORS.border,
+    alignSelf: 'center', marginBottom: 20,
+  },
+  confirmHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  confirmTitle: {
+    fontSize: 20, fontWeight: '800', color: COLORS.textPrimary, letterSpacing: -0.3,
+    flex: 1,
+  },
+  sheetCloseBtn: {
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: COLORS.surfaceAlt,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  confirmIconWrapper: { alignItems: 'center', marginBottom: 12 },
+  confirmIconCircle: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
   },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: COLORS.textPrimary,
-    marginBottom: 6,
-    textAlign: 'center',
-    letterSpacing: -0.3,
-  },
-  modalSubtitle: {
+  confirmProductName: {
     fontSize: 13,
     fontWeight: '700',
     color: COLORS.textSecondary,
-    marginBottom: 8,
+    marginBottom: 4,
     textAlign: 'center',
   },
-  modalPrice: {
-    fontSize: 26,
-    color: COLORS.primary,
+  confirmAmount: {
+    fontSize: 32,
     fontWeight: '800',
-    marginBottom: 14,
-    textAlign: 'center',
-    letterSpacing: -0.5,
-  },
-  modalPhoneWrapper: {
-    backgroundColor: COLORS.surfaceAlt,
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
+    color: COLORS.primary,
+    letterSpacing: -1,
     marginBottom: 18,
-    alignItems: 'center',
+    textAlign: 'center',
+  },
+
+  confirmInfoBox: {
+    backgroundColor: COLORS.surfaceAlt,
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 16,
     borderWidth: 1,
     borderColor: COLORS.borderSoft,
   },
-  modalPhone: {
-    fontSize: 13,
-    color: COLORS.textSecondary,
-    fontWeight: '600',
+  confirmInfoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 4,
   },
-  modalLabel: {
-    fontSize: 13,
+  confirmInfoLabel: { fontSize: 12, color: COLORS.textSecondary, fontWeight: '600' },
+  confirmInfoValue: {
+    fontSize: 12,
+    color: COLORS.textPrimary,
     fontWeight: '700',
-    color: COLORS.textSecondary,
-    marginBottom: 12,
-    textAlign: 'center',
-    letterSpacing: 0.2,
+    flex: 1,
+    textAlign: 'right',
+    marginLeft: 8,
   },
 
-  /* ─── PIN ─────────────────────────────────────────────────────── */
-  pinInputWrapper: {
+  /* PIN inline */
+  pinInline: {
+    marginTop: 8,
+    marginBottom: 16,
+    backgroundColor: COLORS.surfaceAlt,
+    borderRadius: 18,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: COLORS.borderSoft,
+  },
+  pinInlineHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.surfaceAlt,
-    borderRadius: 14,
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  pinInlineLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.textSecondary,
+    letterSpacing: 0.2,
+    flex: 1,
+  },
+  pinInlineCounter: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: COLORS.textMuted,
+  },
+  pinInlineRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.surface,
+    borderRadius: 12,
     borderWidth: 1.5,
     borderColor: COLORS.primary + '40',
     paddingHorizontal: 12,
-    marginBottom: 6,
   },
-  pinInput: {
+  pinInlineInput: {
     flex: 1,
     fontSize: 18,
     fontWeight: '700',
@@ -2283,83 +2488,76 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingVertical: 14,
   },
-  pinEyeButton: {
-    padding: 8,
-    marginLeft: 4,
+  pinInlineEye: {
+    padding: 6, marginLeft: 4,
+  },
+  pinInlineActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 14,
+  },
+  pinInlineCancel: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  pinToggleLabelWrapper: {
-    alignSelf: 'center',
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    marginBottom: 8,
+  pinInlineCancelText: {
+    color: COLORS.textSecondary, fontSize: 14, fontWeight: '700',
   },
-  pinToggleLabelText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: COLORS.primary,
-    textDecorationLine: 'underline',
-  },
-
-  /* ─── Biométrie ───────────────────────────────────────────────── */
-  biometricButton: {
-    backgroundColor: COLORS.primarySoft,
-    width: 76,
-    height: 76,
-    borderRadius: 38,
-    alignItems: 'center',
-    justifyContent: 'center',
-    alignSelf: 'center',
-    marginVertical: 12,
-    borderWidth: 2,
-    borderColor: COLORS.primary + '25',
-  },
-  biometricIcon: {
-    width: 44,
-    height: 44,
-    resizeMode: 'contain',
-    tintColor: COLORS.primary,
-  },
-  switchMethodButton: {
-    marginVertical: 10,
-    paddingVertical: 6,
-    alignItems: 'center',
-  },
-  switchMethodText: {
-    color: COLORS.primary,
-    fontSize: 13,
-    fontWeight: '700',
-    textDecorationLine: 'underline',
-  },
-
-  /* ─── Boutons modal ───────────────────────────────────────────── */
-  confirmButton: {
+  pinInlineConfirm: {
+    flex: 1.4,
+    paddingVertical: 12,
+    borderRadius: 12,
     backgroundColor: COLORS.primary,
-    paddingVertical: 15,
-    paddingHorizontal: 20,
-    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 12,
-    minHeight: 52,
-    width: '100%',
     ...Platform.select({
-      ios: {
-        shadowColor: COLORS.primary,
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.25,
-        shadowRadius: 8,
-      },
+      ios: { shadowColor: COLORS.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 8 },
       android: { elevation: 3 },
     }),
   },
+  pinInlineConfirmDisabled: {
+    backgroundColor: COLORS.border,
+    ...Platform.select({ ios: { shadowOpacity: 0 }, android: { elevation: 0 } }),
+  },
+  pinInlineConfirmText: {
+    color: '#FFFFFF', fontSize: 14, fontWeight: '800', letterSpacing: 0.2,
+  },
+
+  /* Confirm button (bio) */
+  confirmButton: {
+    backgroundColor: COLORS.primary,
+    borderRadius: 20,
+    paddingVertical: 20,
+    paddingHorizontal: 24,
+    marginTop: 8,
+    ...Platform.select({
+      ios: { shadowColor: COLORS.primary, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.3, shadowRadius: 16 },
+      android: { elevation: 6 },
+    }),
+  },
+  confirmButtonDisabled: {
+    backgroundColor: COLORS.border,
+    ...Platform.select({ ios: { shadowOpacity: 0 }, android: { elevation: 0 } }),
+  },
+  confirmButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
   confirmButtonText: {
-    color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '800',
+    color: '#FFFFFF',
     letterSpacing: 0.3,
   },
+
   cancelButton: {
     backgroundColor: COLORS.surfaceAlt,
     borderWidth: 1,
@@ -2370,7 +2568,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 10,
-    width: '100%',
   },
   cancelButtonText: {
     color: COLORS.textSecondary,
@@ -2378,13 +2575,12 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 
-  /* ─── BLR : résultat / erreur ─────────────────────────────────── */
+  /* BLR */
   blrResultCard: {
     backgroundColor: COLORS.surface,
-    marginHorizontal: 16,
     marginTop: 16,
-    borderRadius: 20,
-    padding: 18,
+    borderRadius: 18,
+    padding: 16,
     borderWidth: 1,
     borderColor: COLORS.sky + '25',
     ...Platform.select({
@@ -2400,17 +2596,17 @@ const styles = StyleSheet.create({
   blrResultHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    marginBottom: 14,
+    gap: 7,
+    marginBottom: 12,
   },
   blrResultDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+    width: 9,
+    height: 9,
+    borderRadius: 4.5,
     backgroundColor: COLORS.success,
   },
   blrResultBadge: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '800',
     color: COLORS.success,
     letterSpacing: -0.1,
@@ -2419,34 +2615,33 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 10,
+    paddingVertical: 8,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.borderSoft,
   },
   blrRowLabel: {
-    fontSize: 12,
+    fontSize: 11.5,
     fontWeight: '600',
     color: COLORS.textSecondary,
   },
   blrRowValue: {
-    fontSize: 13,
+    fontSize: 12.5,
     fontWeight: '800',
     color: COLORS.textPrimary,
     letterSpacing: -0.1,
   },
   blrErrorCard: {
     backgroundColor: COLORS.dangerSoft,
-    marginHorizontal: 16,
-    marginTop: 14,
-    borderRadius: 14,
-    padding: 14,
+    marginTop: 12,
+    borderRadius: 12,
+    padding: 12,
     borderWidth: 1,
     borderColor: COLORS.danger + '30',
   },
   blrErrorText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '700',
     color: COLORS.danger,
-    lineHeight: 18,
+    lineHeight: 17,
   },
 });

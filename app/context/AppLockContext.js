@@ -15,8 +15,8 @@ import { isDeviceCompromised } from '../utils/security';
 
 const AppLockContext = createContext(null);
 
-// ✅ Délai de grâce : 5 secondes
-const GRACE_PERIOD_MS = 5 * 1000;
+// ✅ Délai de grâce : 60 secondes (permet de consulter un SMS/code sans reverrouiller)
+const GRACE_PERIOD_MS = 60 * 1000;
 
 // ✅ Max tentatives PIN avant déconnexion auto
 const MAX_ATTEMPTS = 5;

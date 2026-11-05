@@ -1,0 +1,55 @@
+# Dependencies
+node_modules/
+**/node_modules/
+package-lock.json.bak
+pnpm-lock.yaml.bak
+yarn.lock.bak
+
+# Expo
+.expo/
+.expo-shared/
+dist/
+web-build/
+
+# Native builds
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.keystore
+
+# Metro / Temp
+.metro-health-check*
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Fichiers API privés (Cerveau de l'application)
+app/services/api.js
+web/js/services/api.js
+app/config.js
+
+# Données de production
+server/data/*.json
+
+# Environment
+.env
+.env*
+*.env
+server/.env
+app/.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.vscode/
+.idea/

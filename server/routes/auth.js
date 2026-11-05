@@ -5,16 +5,64 @@ const bcrypt = require('bcrypt');
 const fs = require('fs');
 const path = require('path');
 const { log } = require('../services/audit');
-const { verifyToken } = require('../middleware/auth');
+const { verifyToken, getJwtSecret } = require('../middleware/auth');
 
 const usersPath = path.join(__dirname, '../data/users.json');
+
+// ─── PROTECTION ANTI-BRUTEFORCE (RATE LIMITING EN MÉMOIRE) ─────────────
+const LOGIN_WINDOW_MS = 10 * 60 * 1000; // 10 minutes
+const MAX_LOGIN_ATTEMPTS = 5;
+const loginAttempts = new Map();
+
+function checkLoginRateLimit(key) {
+  const now = Date.now();
+  const record = loginAttempts.get(key);
+  if (!record || now - record.firstAttempt > LOGIN_WINDOW_MS) {
+    return { allowed: true };
+  }
+  if (record.count >= MAX_LOGIN_ATTEMPTS) {
+    const retryAfterSec = Math.ceil((LOGIN_WINDOW_MS - (now - record.firstAttempt)) / 1000);
+    return { allowed: false, retryAfterSec };
+  }
+  return { allowed: true };
+}
+
+function recordFailedLogin(key) {
+  const now = Date.now();
+  const record = loginAttempts.get(key);
+  if (!record || now - record.firstAttempt > LOGIN_WINDOW_MS) {
+    loginAttempts.set(key, { count: 1, firstAttempt: now });
+  } else {
+    record.count += 1;
+  }
+}
+
+function clearLoginAttempts(key) {
+  loginAttempts.delete(key);
+}
 
 // ------------------------------------------------------------
 // POST /api/auth/login
 // ------------------------------------------------------------
 router.post('/login', async (req, res) => {
-  const { email, password } = req.body;
-  console.log(`🔐 Tentative de connexion: ${email}`);
+  const { email, password } = req.body || {};
+  const normalizedEmail = String(email || '').toLowerCase().trim();
+  const clientIp = req.ip || req.connection?.remoteAddress || 'unknown';
+  const rateKey = `${clientIp}:${normalizedEmail}`;
+
+  const rateCheck = checkLoginRateLimit(rateKey);
+  if (!rateCheck.allowed) {
+    return res.status(429).json({
+      error: `Trop de tentatives de connexion. Réessayez dans ${Math.ceil(rateCheck.retryAfterSec / 60)} min.`,
+      retryAfterSec: rateCheck.retryAfterSec,
+    });
+  }
+
+  if (!normalizedEmail || !password) {
+    return res.status(400).json({ error: 'Email et mot de passe requis' });
+  }
+
+  console.log(`🔐 Tentative de connexion: ${normalizedEmail}`);
 
   if (!fs.existsSync(usersPath)) {
     console.error('❌ Fichier users.json introuvable !');
@@ -30,17 +78,18 @@ router.post('/login', async (req, res) => {
     return res.status(500).json({ error: 'Erreur de lecture du fichier utilisateurs' });
   }
 
-  const user = users.find(u => u.email?.toLowerCase() === email.toLowerCase().trim());
+  const user = users.find((u) => u.email?.toLowerCase() === normalizedEmail);
 
   if (!user) {
-    console.warn(`⚠️ Utilisateur non trouvé: ${email}`);
+    recordFailedLogin(rateKey);
+    console.warn(`⚠️ Utilisateur non trouvé: ${normalizedEmail}`);
     log({
       action: 'login_failed',
       category: 'auth',
       severity: 'warning',
       success: false,
-      actor: { email },
-      details: { reason: 'Email inconnu', email },
+      actor: { email: normalizedEmail },
+      details: { reason: 'Email inconnu', email: normalizedEmail },
       req,
     });
     return res.status(401).json({ error: 'Email ou mot de passe incorrect' });
@@ -50,11 +99,12 @@ router.post('/login', async (req, res) => {
   if (typeof user.password === 'string' && user.password.startsWith('$2')) {
     passwordOk = await bcrypt.compare(password, user.password);
   } else {
-    passwordOk = (user.password === password);
+    passwordOk = user.password === password;
   }
 
   if (!passwordOk) {
-    console.warn(`⚠️ Mot de passe incorrect pour: ${email}`);
+    recordFailedLogin(rateKey);
+    console.warn(`⚠️ Mot de passe incorrect pour: ${normalizedEmail}`);
     log({
       action: 'login_failed',
       category: 'auth',
@@ -68,7 +118,7 @@ router.post('/login', async (req, res) => {
   }
 
   if (user.status === 'suspended') {
-    console.warn(`⛔ Compte suspendu : ${email}`);
+    console.warn(`⛔ Compte suspendu : ${normalizedEmail}`);
     log({
       action: 'login_failed',
       category: 'auth',
@@ -79,19 +129,19 @@ router.post('/login', async (req, res) => {
       req,
     });
     return res.status(403).json({
-      error: 'Votre compte a été suspendu. Contactez votre administrateur.'
+      error: 'Votre compte a été suspendu. Contactez votre administrateur.',
     });
   }
 
-  console.log(`✅ Authentification réussie: ${email} (${user.role})`);
+  clearLoginAttempts(rateKey);
+  console.log(`✅ Authentification réussie: ${normalizedEmail} (${user.role})`);
 
   const token = jwt.sign(
     { id: user.id, email: user.email, role: user.role },
-    process.env.JWT_SECRET || 'ma_super_cle_secrete',
+    getJwtSecret(),
     { expiresIn: '7d' }
   );
 
-  // ✅ AUDIT — Connexion réussie
   log({
     action: 'login_success',
     category: 'auth',
@@ -109,8 +159,8 @@ router.post('/login', async (req, res) => {
       name: user.name,
       email: user.email,
       role: user.role,
-      status: user.status || 'active'
-    }
+      status: user.status || 'active',
+    },
   });
 });
 
@@ -123,10 +173,12 @@ router.post('/logout', verifyToken, (req, res) => {
     category: 'auth',
     severity: 'info',
     success: true,
-    actor: req.user,
+    actor: { id: req.user.id, email: req.user.email, role: req.user.role },
+    details: {},
     req,
   });
-  res.json({ success: true });
+
+  res.json({ message: 'Déconnexion enregistrée' });
 });
 
 module.exports = router;

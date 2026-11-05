@@ -3,7 +3,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 import io from 'socket.io-client';
-import { API_URL } from '../config';
+import { CHAT_URL as API_URL } from '../config';
 
 // ===== SOCKET =====
 let socket = null;
