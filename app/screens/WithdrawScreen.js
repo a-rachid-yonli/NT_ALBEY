@@ -1037,7 +1037,7 @@ ${details.feesIncluded ? '✅ Frais inclus' : '❌ Hors frais'}
           <VoiceAssistantButton
             type="withdraw"
             amount={numericAmount}
-            recipientName={selectedDepartement?.designation || 'Guichet Niger Telecoms'}
+            location={selectedDepartement?.designation || ''}
             containerStyle={{ marginTop: 18 }}
           />
         )}
@@ -1048,7 +1048,7 @@ ${details.feesIncluded ? '✅ Frais inclus' : '❌ Hors frais'}
             <VoiceAssistantButton
               type="withdraw"
               amount={numericAmount}
-              recipientName={selectedDepartement?.designation || 'Guichet Niger Telecoms'}
+              location={selectedDepartement?.designation || ''}
               containerStyle={{ marginBottom: 14, marginTop: 0 }}
             />
             <View style={styles.pinInlineHeader}>
@@ -1332,7 +1332,7 @@ ${details.feesIncluded ? '✅ Frais inclus' : '❌ Hors frais'}
               <VoiceAssistantButton
                 type="withdraw"
                 amount={numericAmount}
-                recipientName={selectedDepartement?.designation || 'Guichet Niger Telecoms'}
+                location={selectedDepartement?.designation || ''}
               />
 
               {/* Section FRAIS */}

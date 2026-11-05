@@ -189,6 +189,7 @@ export function buildVoiceConfirmationText({
   amount = 0,
   recipientName = '',
   recipientPhone = '',
+  location = '',
   lang = 'fr',
 }) {
   const numericVal = parseInt(String(amount).replace(/\D/g, ''), 10) || 0;
@@ -223,10 +224,13 @@ export function buildVoiceConfirmationText({
         const who = targetName && phonePart
           ? `${targetName}, ${phonePart}`
           : (targetName || phonePart || 'abokin ciniki');
-        return `Tabbatar da aikawa. Za ku tura kudi ${haoussaAmount} don amsa a ofishin Niger Telecoms ga ${who}.`;
+        const locPart = location ? `na ${location}` : '';
+        return `Tabbatar da aikawa. Za ku tura kudi ${haoussaAmount} don amsa a ofishin Niger Telecoms ${locPart ? locPart + ' ' : ''}ga ${who}.`;
       }
-      case 'withdraw':
-        return `Tabbatar da cire kudi. Za ku cire kudi ${haoussaAmount} a ofishin Niger Telecoms.`;
+      case 'withdraw': {
+        const locPart = location ? `na ${location}` : '';
+        return `Tabbatar da cire kudi. Za ku cire kudi ${haoussaAmount} a ofishin Niger Telecoms${locPart ? ' na ' + location : ''}.`;
+      }
       case 'transfer_p2p':
       default:
         return `Tabbatar da aikawa. Za ku tura kudi ${haoussaAmount} ga ${targetName || recipientPhone || 'abokin ciniki'}.`;
@@ -265,10 +269,13 @@ export function buildVoiceConfirmationText({
       } else {
         targetPhrase = `au destinataire`;
       }
-      return `Confirmation de transfert d'argent. Vous allez envoyer ${formattedAmount} Francs CFA pour retrait au guichet ${targetPhrase}.`;
+      const guichetPhrase = location ? `au guichet de ${location}` : 'au guichet';
+      return `Confirmation de transfert d'argent. Vous allez envoyer ${formattedAmount} Francs CFA pour retrait ${guichetPhrase} ${targetPhrase}.`;
     }
-    case 'withdraw':
-      return `Confirmation de retrait. Vous allez retirer ${formattedAmount} Francs CFA en espèces au guichet Niger Telecoms.`;
+    case 'withdraw': {
+      const guichetPhrase = location ? `au guichet de ${location}` : 'au guichet Niger Telecoms';
+      return `Confirmation de retrait. Vous allez retirer ${formattedAmount} Francs CFA en espèces ${guichetPhrase}.`;
+    }
     case 'transfer_p2p':
     default:
       return `Confirmation d'envoi. Vous allez envoyer ${formattedAmount} Francs CFA à ${nameOrPhone}.`;

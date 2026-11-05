@@ -1180,6 +1180,7 @@ ${details.feesIncluded ? '✅ Frais inclus' : '❌ Hors frais'}
             amount={numericAmount}
             recipientName={beneficiaryName || ''}
             recipientPhone={phoneNumber || ''}
+            location={selectedDepartement?.designation || ''}
             containerStyle={{ marginTop: 18, marginBottom: 12 }}
           />
         )}
@@ -1407,6 +1408,7 @@ ${details.feesIncluded ? '✅ Frais inclus' : '❌ Hors frais'}
                 amount={numericAmount}
                 recipientName={beneficiaryName || ''}
                 recipientPhone={phoneNumber || ''}
+                location={selectedDepartement?.designation || ''}
               />
 
               {/* FRAIS */}
@@ -1490,6 +1492,7 @@ ${details.feesIncluded ? '✅ Frais inclus' : '❌ Hors frais'}
                     amount={numericAmount}
                     recipientName={beneficiaryName || ''}
                     recipientPhone={phoneNumber || ''}
+                    location={selectedDepartement?.designation || ''}
                     containerStyle={{ marginBottom: 14, marginTop: 0 }}
                   />
                   <View style={styles.pinInlineHeader}>

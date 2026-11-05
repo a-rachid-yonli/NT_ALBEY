@@ -51,6 +51,7 @@ export default function VoiceAssistantButton({
   amount = 0,
   recipientName = '',
   recipientPhone = '',
+  location = '',
   containerStyle = {},
 }) {
   const [selectedLang, setSelectedLang] = useState('fr'); // 'fr' | 'ha'
@@ -115,6 +116,7 @@ export default function VoiceAssistantButton({
       amount,
       recipientName,
       recipientPhone,
+      location,
       lang: langToUse,
     });
 
