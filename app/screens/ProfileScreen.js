@@ -27,6 +27,7 @@ import * as SecureStore from 'expo-secure-store';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
 import MainLayout from '../components/MainLayout';
+import KycVerificationModal, { getSavedKycStatus } from '../components/KycVerificationModal';
 import { API } from '../services/api';
 import { useTranslation, TranslatedText as Text, TranslatedTextInput as TextInput, TranslatedAlert as Alert, ThemedView as View, ThemedTouchableOpacity as TouchableOpacity, ThemedScrollView as ScrollView } from '../context/LanguageContext';
 import { PIN_HELPER_TEXT } from '../utils/validators';
@@ -282,6 +283,7 @@ export default function ProfileScreen({ navigation, onLogout }) {
   const [kycStatus, setKycStatus] = useState('none');
   const [kycLevel, setKycLevel] = useState('kyc1');
   const [kycVerificationData, setKycVerificationData] = useState(null);
+  const [kycModalVisible, setKycModalVisible] = useState(false);
 
   // ═════════════════════════════════════════════════════
   // 📅 ÉTAT DU DATE PICKER (mode édition)
@@ -305,6 +307,14 @@ export default function ProfileScreen({ navigation, onLogout }) {
         }
 
         if (cachedUser?.phone) {
+          try {
+            const savedKyc = await getSavedKycStatus(cachedUser.phone);
+            if (savedKyc && savedKyc.status) {
+              setKycStatus(savedKyc.status === 'verified' ? 'approved' : savedKyc.status);
+              setKycVerificationData(savedKyc);
+            }
+          } catch (_) {}
+
           try {
             if (__DEV__) console.log('📡 [Profile] Récupération depuis l\'API...');
             const freshData = await API.getMyProfile();
@@ -740,11 +750,7 @@ export default function ProfileScreen({ navigation, onLogout }) {
   };
 
   const handleUploadDocument = () => {
-    Alert.alert(
-      'Upload de document',
-      'Cette fonctionnalité permet d\'uploader votre pièce d\'identité.',
-      [{ text: 'OK' }]
-    );
+    setKycModalVisible(true);
   };
 
   const kycConfig = KYC_STATUS_CONFIG[kycStatus] || KYC_STATUS_CONFIG.none;
@@ -1411,6 +1417,18 @@ export default function ProfileScreen({ navigation, onLogout }) {
           </View>
         </View>
       </Modal>
+
+      {/* ═══════════ MODAL VÉRIFICATION D'IDENTITÉ (KYC) ═══════════ */}
+      <KycVerificationModal
+        visible={kycModalVisible}
+        onClose={() => setKycModalVisible(false)}
+        userPhone={profile.phone}
+        userName={profile.name}
+        onVerified={(data) => {
+          setKycStatus(data?.status === 'verified' ? 'approved' : (data?.status || 'pending'));
+          setKycVerificationData(data);
+        }}
+      />
     </MainLayout>
   );
 }

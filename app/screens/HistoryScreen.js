@@ -17,6 +17,7 @@ import {
   ActivityIndicator,
   Platform,
   RefreshControl,
+  Linking,
 } from 'react-native';
 import { TranslatedText as Text, TranslatedTextInput as TextInput, TranslatedAlert as Alert, ThemedView as View, ThemedTouchableOpacity as TouchableOpacity, ThemedScrollView as ScrollView } from '../context/LanguageContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -153,6 +154,12 @@ const IconPDF = () => (
   </Svg>
 );
 
+const IconWhatsApp = () => (
+  <Svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+    <Path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z" stroke="#25D366" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+  </Svg>
+);
+
 const IconEmpty = () => (
   <Svg width="48" height="48" viewBox="0 0 24 24" fill="none">
     <Rect x="3" y="4" width="18" height="16" rx="2" stroke={COLORS.primary} strokeWidth="1.8" />
@@ -180,6 +187,8 @@ export default function HistoryScreen({ navigation }) {
   const [filterModalVisible, setFilterModalVisible] = useState(false);
   const [dateRange, setDateRange] = useState('all');
   const [typeFilter, setTypeFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [flowFilter, setFlowFilter] = useState('all');
   const [exporting, setExporting] = useState(false);
 
   // ✅ Enrichissement depuis l'API + cache local
@@ -251,18 +260,71 @@ export default function HistoryScreen({ navigation }) {
 
   const getFilteredTransactions = () => {
     let filtered = [...transactions];
+
+    // 1. Filtre par type
     if (selectedFilter !== 'all') {
       filtered = filtered.filter(t => t.type === selectedFilter);
     }
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      filtered = filtered.filter(t =>
-        (t.description || '').toLowerCase().includes(q) ||
-        (t.details?.beneficiary && t.details.beneficiary.toLowerCase().includes(q)) ||
-        (t.details?.sender && t.details.sender.toLowerCase().includes(q)) ||
-        (t.reference && t.reference.toLowerCase().includes(q))
-      );
+
+    // 2. Filtre par sens de flux (Entrées vs Sorties)
+    if (flowFilter === 'in') {
+      filtered = filtered.filter(t => Number(t.amount) > 0);
+    } else if (flowFilter === 'out') {
+      filtered = filtered.filter(t => Number(t.amount) < 0);
     }
+
+    // 3. Filtre par statut (Succès / En cours / Échoué)
+    if (statusFilter !== 'all') {
+      filtered = filtered.filter(t => (t.status || 'success') === statusFilter);
+    }
+
+    // 4. Filtre par période temporelle
+    if (dateRange !== 'all') {
+      const now = new Date();
+      filtered = filtered.filter(t => {
+        if (!t.date) return false;
+        const txDate = new Date(t.date);
+        if (dateRange === 'today') {
+          return txDate.toDateString() === now.toDateString();
+        } else if (dateRange === 'week') {
+          const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 3600 * 1000);
+          return txDate >= sevenDaysAgo;
+        } else if (dateRange === 'month') {
+          return txDate.getMonth() === now.getMonth() && txDate.getFullYear() === now.getFullYear();
+        } else if (dateRange === 'last_month') {
+          const lastMonth = now.getMonth() === 0 ? 11 : now.getMonth() - 1;
+          const year = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
+          return txDate.getMonth() === lastMonth && txDate.getFullYear() === year;
+        }
+        return true;
+      });
+    }
+
+    // 5. Recherche avancée multi-critères
+    if (searchQuery && searchQuery.trim() !== '') {
+      const q = searchQuery.trim().toLowerCase();
+      const numQ = q.replace(/[^0-9]/g, '');
+      filtered = filtered.filter(t => {
+        const desc = (t.description || '').toLowerCase();
+        const ben = (t.details?.beneficiary || '').toLowerCase();
+        const sen = (t.details?.sender || '').toLowerCase();
+        const ref = (t.reference || '').toLowerCase();
+        const techId = (t.id || t.technicalId || '').toString().toLowerCase();
+        const phone = (t.details?.phone || t.details?.receiver_phone || t.details?.sender_phone || '').toString();
+        const amountStr = Math.abs(Number(t.amount) || 0).toString();
+
+        return (
+          desc.includes(q) ||
+          ben.includes(q) ||
+          sen.includes(q) ||
+          ref.includes(q) ||
+          techId.includes(q) ||
+          (numQ && phone.includes(numQ)) ||
+          (numQ && amountStr.includes(numQ))
+        );
+      });
+    }
+
     filtered.sort((a, b) => new Date(b.date) - new Date(a.date));
     return filtered;
   };
@@ -813,6 +875,79 @@ NT Albey - Votre argent, partout, tout le temps`;
     }
   };
 
+  // ══════════════════════════════════════════════════════════════
+  // 📲 PARTAGE WHATSAPP RAPIDE
+  // ══════════════════════════════════════════════════════════════
+  const buildWhatsAppText = () => {
+    const d = getDisplayData();
+    if (!d) return '';
+    const amountStr = d.isDebit
+      ? `- ${d.grossAmount.toLocaleString()} ${d.currency}`
+      : `+ ${d.grossAmount.toLocaleString()} ${d.currency}`;
+
+    const statusBadge = d.status === 'success' ? '✅ SUCCÈS' : d.status === 'failed' ? '❌ ÉCHOUÉ' : '⏳ EN COURS';
+
+    let text = `*🇳🇪 NIGER TELECOMS — NT ALBEY*\n`;
+    text += `*REÇU DE TRANSACTION OFFICIEL*\n`;
+    text += `━━━━━━━━━━━━━━━━━━━━━\n`;
+    text += `📌 *Statut* : ${statusBadge}\n`;
+    text += `📋 *Opération* : ${d.description}\n`;
+    text += `💰 *Montant* : *${amountStr}*\n`;
+    if (d.senderName) {
+      text += `📱 *Émetteur* : ${d.senderName}\n`;
+    }
+    if (d.senderIsPhone && d.senderPhone) {
+      text += `📞 *Tél. émetteur* : +227 ${d.senderPhone}\n`;
+    }
+    if (d.receiverName) {
+      text += `👤 *Bénéficiaire* : ${d.receiverName}\n`;
+    }
+    if (d.receiverIsPhone && d.receiverPhone) {
+      text += `📞 *Tél. bénéficiaire* : +227 ${d.receiverPhone}\n`;
+    }
+    if (d.hasFeeInfo) {
+      text += `📋 *Frais* : ${d.feeAmount.toLocaleString()} ${d.currency}\n`;
+      text += `🎁 *Net reçu* : ${d.netAmount.toLocaleString()} ${d.currency}\n`;
+      text += `💳 *Total débité* : ${d.totalDebited.toLocaleString()} ${d.currency}\n`;
+    }
+    text += `📅 *Date* : ${d.dateFormatted}\n`;
+    text += `🔑 *Référence* : *${d.businessRef || 'N/A'}*\n`;
+    if (d.technicalId) {
+      text += `🆔 *ID technique* : \`${d.technicalId}\`\n`;
+    }
+    text += `━━━━━━━━━━━━━━━━━━━━━\n`;
+    text += `📞 Support client : 555 | support@ntalbey.ne\n`;
+    text += `_NT Albey - Votre argent, partout, tout le temps._`;
+
+    return text;
+  };
+
+  const handleShareWhatsApp = async () => {
+    const text = buildWhatsAppText();
+    if (!text) return;
+    try {
+      const url = `whatsapp://send?text=${encodeURIComponent(text)}`;
+      const canOpen = await Linking.canOpenURL(url).catch(() => false);
+      if (canOpen) {
+        await Linking.openURL(url);
+      } else {
+        const webUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
+        const canWeb = await Linking.canOpenURL(webUrl).catch(() => false);
+        if (canWeb && Platform.OS === 'web') {
+          await Linking.openURL(webUrl);
+        } else {
+          await Share.share({ message: text });
+        }
+      }
+    } catch (e) {
+      try {
+        await Share.share({ message: text });
+      } catch (_) {
+        Alert.alert('Erreur', 'Impossible de partager vers WhatsApp.');
+      }
+    }
+  };
+
   const totalDepense = transactions.filter(t => t.amount < 0).reduce((sum, t) => sum + Math.abs(t.amount), 0);
   const totalReception = transactions.filter(t => t.amount > 0).reduce((sum, t) => sum + t.amount, 0);
   const totalTransactions = transactions.length;
@@ -852,6 +987,8 @@ NT Albey - Votre argent, partout, tout le temps`;
     );
   }
 
+  const hasActiveFilters = selectedFilter !== 'all' || dateRange !== 'all' || flowFilter !== 'all' || statusFilter !== 'all' || searchQuery.trim() !== '';
+
   return (
     <View style={styles.container}>
       {/* ═══════════ HEADER ═══════════ */}
@@ -863,8 +1000,13 @@ NT Albey - Votre argent, partout, tout le temps`;
           <Text style={styles.headerTitle}>Historique</Text>
           <Text style={styles.headerSubtitle}>{totalTransactions} opération{totalTransactions > 1 ? 's' : ''}</Text>
         </View>
-        <TouchableOpacity onPress={() => setFilterModalVisible(true)} style={styles.filterButton} activeOpacity={0.7}>
-          <IconFilter />
+        <TouchableOpacity
+          onPress={() => setFilterModalVisible(true)}
+          style={[styles.filterButton, hasActiveFilters && styles.filterButtonActive]}
+          activeOpacity={0.7}
+        >
+          <IconFilter color={hasActiveFilters ? '#FFFFFF' : COLORS.textPrimary} />
+          {hasActiveFilters && <View style={styles.filterActiveDot} />}
         </TouchableOpacity>
       </View>
 
@@ -1225,13 +1367,14 @@ NT Albey - Votre argent, partout, tout le temps`;
 
                 <View style={styles.detailActions}>
                   <TouchableOpacity
-                    style={styles.detailButton}
-                    onPress={handleShare}
+                    style={[styles.detailButton, styles.whatsappButton]}
+                    onPress={handleShareWhatsApp}
                     activeOpacity={0.75}
                   >
-                    <IconShare />
-                    <Text style={styles.detailButtonText}>Copier</Text>
+                    <IconWhatsApp />
+                    <Text style={[styles.detailButtonText, styles.whatsappButtonText]}>WhatsApp</Text>
                   </TouchableOpacity>
+
                   <TouchableOpacity
                     style={[styles.detailButton, styles.pdfButton]}
                     onPress={handleExportPDF}
@@ -1240,9 +1383,19 @@ NT Albey - Votre argent, partout, tout le temps`;
                   >
                     <IconPDF />
                     <Text style={[styles.detailButtonText, styles.pdfButtonText]}>
-                      {exporting ? '…' : 'Partager'}
+                      {exporting ? '…' : 'PDF'}
                     </Text>
                   </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.detailButton}
+                    onPress={handleShare}
+                    activeOpacity={0.75}
+                  >
+                    <IconShare />
+                    <Text style={styles.detailButtonText}>Copier</Text>
+                  </TouchableOpacity>
+
                   {selectedTransaction.deletable && (
                     <TouchableOpacity
                       style={[styles.detailButton, styles.cancelButton]}
@@ -1271,66 +1424,125 @@ NT Albey - Votre argent, partout, tout le temps`;
             <View style={styles.modalDragHandle} />
 
             <View style={styles.filterModalHeader}>
-              <Text style={styles.filterModalTitle}>Filtres</Text>
-              <TouchableOpacity onPress={() => setFilterModalVisible(false)} activeOpacity={0.7}>
-                <Text style={styles.filterModalClose}>✕</Text>
-              </TouchableOpacity>
+              <Text style={styles.filterModalTitle}>Filtres avancés</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+                {hasActiveFilters && (
+                  <TouchableOpacity
+                    onPress={() => {
+                      setSelectedFilter('all');
+                      setTypeFilter('all');
+                      setDateRange('all');
+                      setFlowFilter('all');
+                      setStatusFilter('all');
+                      setSearchQuery('');
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.resetFilterText}>Réinitialiser</Text>
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity onPress={() => setFilterModalVisible(false)} activeOpacity={0.7}>
+                  <Text style={styles.filterModalClose}>✕</Text>
+                </TouchableOpacity>
+              </View>
             </View>
 
-            <Text style={styles.filterSectionTitle}>Type d'opération</Text>
-            <View style={styles.filterOptions}>
-              {['all', 'send', 'withdraw', 'transfer', 'transferAgency', 'cashin', 'payment', 'shop', 'gouvpay', 'bill', 'savings'].map(type => (
-                <TouchableOpacity
-                  key={type}
-                  style={[styles.filterOption, typeFilter === type && styles.filterOptionActive]}
-                  onPress={() => setTypeFilter(type)}
-                  activeOpacity={0.75}
-                >
-                  <Text style={[styles.filterOptionText, typeFilter === type && styles.filterOptionTextActive]}>
-                    {type === 'all' ? 'Tout'
-                      : type === 'send' ? 'Envois'
-                      : type === 'withdraw' ? 'Retraits'
-                      : type === 'transfer' ? 'Compte à compte'
-                      : type === 'transferAgency' ? 'Guichet'
-                      : type === 'cashin' ? 'Encaissements'
-                      : type === 'payment' ? 'Paiements'
-                      : type === 'shop' ? 'Achats'
-                      : type === 'gouvpay' ? 'Gouv-Pay'
-                      : type === 'bill' ? 'Factures'
-                      : 'Épargne'}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 420 }}>
+              {/* 1. Sens de l'opération */}
+              <Text style={styles.filterSectionTitle}>Sens de l'opération</Text>
+              <View style={styles.filterOptions}>
+                {[
+                  { key: 'all', label: 'Toutes' },
+                  { key: 'in', label: '🟢 Entrées (Crédits)' },
+                  { key: 'out', label: '🔴 Sorties (Débits)' },
+                ].map(opt => (
+                  <TouchableOpacity
+                    key={opt.key}
+                    style={[styles.filterOption, flowFilter === opt.key && styles.filterOptionActive]}
+                    onPress={() => setFlowFilter(opt.key)}
+                    activeOpacity={0.75}
+                  >
+                    <Text style={[styles.filterOptionText, flowFilter === opt.key && styles.filterOptionTextActive]}>
+                      {opt.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
 
-            <Text style={styles.filterSectionTitle}>Période</Text>
-            <View style={styles.filterOptions}>
-              {['all', 'today', 'week', 'month'].map(period => (
-                <TouchableOpacity
-                  key={period}
-                  style={[styles.filterOption, dateRange === period && styles.filterOptionActive]}
-                  onPress={() => setDateRange(period)}
-                  activeOpacity={0.75}
-                >
-                  <Text style={[styles.filterOptionText, dateRange === period && styles.filterOptionTextActive]}>
-                    {period === 'all' ? 'Toujours' : period === 'today' ? "Aujourd'hui" :
-                     period === 'week' ? 'Cette semaine' : 'Ce mois'}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+              {/* 2. Statut */}
+              <Text style={styles.filterSectionTitle}>Statut de la transaction</Text>
+              <View style={styles.filterOptions}>
+                {[
+                  { key: 'all', label: 'Tous les statuts' },
+                  { key: 'success', label: '✓ Succès' },
+                  { key: 'pending', label: '⏳ En cours' },
+                  { key: 'failed', label: '✕ Échoué' },
+                ].map(opt => (
+                  <TouchableOpacity
+                    key={opt.key}
+                    style={[styles.filterOption, statusFilter === opt.key && styles.filterOptionActive]}
+                    onPress={() => setStatusFilter(opt.key)}
+                    activeOpacity={0.75}
+                  >
+                    <Text style={[styles.filterOptionText, statusFilter === opt.key && styles.filterOptionTextActive]}>
+                      {opt.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {/* 3. Période */}
+              <Text style={styles.filterSectionTitle}>Période temporelle</Text>
+              <View style={styles.filterOptions}>
+                {[
+                  { key: 'all', label: 'Toujours' },
+                  { key: 'today', label: "Aujourd'hui" },
+                  { key: 'week', label: 'Cette semaine' },
+                  { key: 'month', label: 'Ce mois' },
+                  { key: 'last_month', label: 'Mois dernier' },
+                ].map(period => (
+                  <TouchableOpacity
+                    key={period.key}
+                    style={[styles.filterOption, dateRange === period.key && styles.filterOptionActive]}
+                    onPress={() => setDateRange(period.key)}
+                    activeOpacity={0.75}
+                  >
+                    <Text style={[styles.filterOptionText, dateRange === period.key && styles.filterOptionTextActive]}>
+                      {period.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {/* 4. Type d'opération */}
+              <Text style={styles.filterSectionTitle}>Type d'opération</Text>
+              <View style={styles.filterOptions}>
+                {filters.map(filter => (
+                  <TouchableOpacity
+                    key={filter.key}
+                    style={[styles.filterOption, typeFilter === filter.key && styles.filterOptionActive]}
+                    onPress={() => setTypeFilter(filter.key)}
+                    activeOpacity={0.75}
+                  >
+                    <Text style={[styles.filterOptionText, typeFilter === filter.key && styles.filterOptionTextActive]}>
+                      {filter.icon} {filter.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </ScrollView>
 
             <TouchableOpacity
               style={styles.applyButton}
               onPress={() => {
                 setFilterModalVisible(false);
-                let newFilter = selectedFilter;
-                if (typeFilter !== 'all') newFilter = typeFilter;
-                setSelectedFilter(newFilter);
+                setSelectedFilter(typeFilter);
               }}
               activeOpacity={0.85}
             >
-              <Text style={styles.applyButtonText}>Appliquer les filtres</Text>
+              <Text style={styles.applyButtonText}>
+                Afficher ({filteredTransactions.length} résultat{filteredTransactions.length > 1 ? 's' : ''})
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1935,11 +2147,33 @@ const styles = StyleSheet.create({
     borderColor: COLORS.accent + '25',
   },
   pdfButtonText: { color: COLORS.accent },
+  whatsappButton: {
+    backgroundColor: '#E8F5E9',
+    borderColor: '#25D366',
+  },
+  whatsappButtonText: { color: '#128C7E' },
   cancelButton: {
     backgroundColor: COLORS.dangerSoft,
     borderColor: COLORS.danger + '25',
   },
   cancelButtonText: { color: COLORS.danger, fontSize: 13, fontWeight: '800' },
+  filterButtonActive: {
+    backgroundColor: COLORS.primary,
+  },
+  filterActiveDot: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#FF6600',
+  },
+  resetFilterText: {
+    fontSize: 12.5,
+    fontWeight: '800',
+    color: '#EF4444',
+  },
 
   // ═══════════════ MODAL FILTRES ═══════════════
   filterModalContent: {

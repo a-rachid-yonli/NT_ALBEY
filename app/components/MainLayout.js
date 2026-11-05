@@ -121,6 +121,7 @@ const STATUS_LABELS = {
 
 const KYC_STATUS_LABELS = {
   approved:  { label: 'Compte vérifié',         shortLabel: 'Vérifié',      icon: '✓',  color: '#059669', bg: '#D1FAE5' },
+  verified:  { label: 'Compte vérifié',         shortLabel: 'Vérifié',      icon: '✓',  color: '#059669', bg: '#D1FAE5' },
   pending:   { label: 'Vérification en cours',  shortLabel: 'En cours',     icon: '⏳', color: '#D97706', bg: '#FEF3C7' },
   rejected:  { label: 'Vérification refusée',   shortLabel: 'Refusé',       icon: '✕',  color: '#DC2626', bg: '#FEE2E2' },
   expired:   { label: 'Vérification expirée',   shortLabel: 'Expiré',       icon: '⌛', color: '#475569', bg: '#E2E8F0' },
@@ -432,7 +433,8 @@ const HamburgerMenu = ({ visible, onClose, navigation, user = {}, kycStatus = nu
         <KycVerificationModal
           visible={kycModalVisible}
           onClose={() => setKycModalVisible(false)}
-          userPhone={userPhone}
+          userPhone={user?.phone}
+          userName={user?.name}
           onVerified={(data) => setLocalKyc(data)}
         />
       </View>
