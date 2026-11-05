@@ -1033,7 +1033,7 @@ ${details.feesIncluded ? '✅ Frais inclus' : '❌ Hors frais'}
           ))}
         </View>
 
-        {canWithdraw && !pinRequired && (
+        {(numericAmount >= 100 || canWithdraw) && !pinRequired && (
           <VoiceAssistantButton
             type="withdraw"
             amount={numericAmount}

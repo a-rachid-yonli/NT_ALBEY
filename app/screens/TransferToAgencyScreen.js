@@ -528,10 +528,8 @@ export default function TransferToAgencyScreen({ navigation }) {
       showToast('error', 'Erreur', 'Numéro du bénéficiaire manquant.');
       return;
     }
-    if (!senderFirstName.trim() || !senderLastName.trim()) {
-      showToast('error', 'Erreur', 'Vos informations (nom et prénom) sont incomplètes.');
-      return;
-    }
+    const sFirst = senderFirstName.trim() || 'Client';
+    const sLast  = senderLastName.trim() || 'NT Albey';
 
     closeConfirmModal();
     setIsSending(true);
@@ -542,8 +540,8 @@ export default function TransferToAgencyScreen({ navigation }) {
         amount:            Number(transactionDetails.amount),
         frais_inclus:      Boolean(feesIncluded),
         receiver_phone:    receiverPhone,
-        sender_first_name: senderFirstName.trim(),
-        sender_last_name:  senderLastName.trim(),
+        sender_first_name: sFirst,
+        sender_last_name:  sLast,
       });
 
       const grossAmount = parseFloat(result.gross_amount) || Number(transactionDetails.amount);
@@ -688,10 +686,6 @@ export default function TransferToAgencyScreen({ navigation }) {
     }
     if (numericAmount < 100) {
       showToast('error', 'Montant insuffisant', 'Le montant minimum est de 100 FCFA.');
-      return;
-    }
-    if (!senderFirstName.trim() || !senderLastName.trim()) {
-      showToast('error', 'Profil incomplet', 'Votre nom et prénom sont requis. Complétez votre profil.');
       return;
     }
 
@@ -900,9 +894,7 @@ ${details.feesIncluded ? '✅ Frais inclus' : '❌ Hors frais'}
     numericAmount >= 100 &&
     numericAmount <= balance &&
     !isSending &&
-    !isVerifyingAuth &&
-    !!senderFirstName.trim() &&
-    !!senderLastName.trim();
+    !isVerifyingAuth;
 
   const ctaLabel = (() => {
     if (!selectedDepartement) return 'Choisir une région';
@@ -1182,7 +1174,7 @@ ${details.feesIncluded ? '✅ Frais inclus' : '❌ Hors frais'}
           )}
         </TouchableOpacity>
 
-        {canSend && (
+        {(numericAmount >= 100 || canSend) && (
           <VoiceAssistantButton
             type="transfer_agency"
             amount={numericAmount}
@@ -1493,6 +1485,13 @@ ${details.feesIncluded ? '✅ Frais inclus' : '❌ Hors frais'}
 
               {pinRequired && (
                 <View style={styles.pinInline}>
+                  <VoiceAssistantButton
+                    type="transfer_agency"
+                    amount={numericAmount}
+                    recipientName={beneficiaryName || ''}
+                    recipientPhone={phoneNumber || ''}
+                    containerStyle={{ marginBottom: 14, marginTop: 0 }}
+                  />
                   <View style={styles.pinInlineHeader}>
                     <Text style={styles.pinInlineLabel}>
                       {isBiometricAvailable && pinRequired

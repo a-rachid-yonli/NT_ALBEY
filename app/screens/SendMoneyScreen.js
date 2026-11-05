@@ -1669,7 +1669,7 @@ export default function SendMoneyScreen({ navigation }) {
           </Text>
         )}
 
-        {canSend && !pinRequired && (
+        {(numericAmount >= 100 || canSend) && !pinRequired && (
           <VoiceAssistantButton
             type="transfer_p2p"
             amount={numericAmount}
