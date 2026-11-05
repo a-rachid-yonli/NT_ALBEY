@@ -202,34 +202,34 @@ export function buildVoiceConfirmationText({
 
     switch (type) {
       case 'shop_credit_self':
-        return `Tabbatar da sayen katin waya. Za ku saka kudin CFA ${haoussaAmount} na katin waya a wayarku.`;
+        return `Tabbatar da sayen katin waya. Za ku saka kudi ${haoussaAmount} na katin waya a wayarku.`;
       case 'shop_credit_other': {
         const phonePairsHa = formatPhoneByPairs(recipientPhone, 'ha');
-        return `Tabbatar da sayen katin waya. Za ku tura kudin CFA ${haoussaAmount} na katin waya ga lamba ${phonePairsHa || recipientPhone}.`;
+        return `Tabbatar da sayen katin waya. Za ku tura kudi ${haoussaAmount} na katin waya ga lamba ${phonePairsHa || recipientPhone}.`;
       }
       case 'shop_softphone': {
         const phonePairsHa = formatPhoneByPairs(recipientPhone, 'ha');
-        return `Tabbatar da caji. Za ku tura kudin CFA ${haoussaAmount} na Softphone ga lamba ${phonePairsHa || recipientPhone}.`;
+        return `Tabbatar da caji. Za ku tura kudi ${haoussaAmount} na Softphone ga lamba ${phonePairsHa || recipientPhone}.`;
       }
       case 'shop_stock':
-        return `Tabbatar da sayen jari. Za ku sayi jarin katin waya na CFA ${haoussaAmount}.`;
+        return `Tabbatar da sayen jari. Za ku sayi jarin katin waya na kudi ${haoussaAmount}.`;
       case 'shop_blr':
-        return `Tabbatar da biyan kudin intanet na BLR. Za ku biya kudin CFA ${haoussaAmount} don lambar ${recipientPhone || 'BLR'}.`;
+        return `Tabbatar da biyan kudin intanet na BLR. Za ku biya kudi ${haoussaAmount} don lambar ${recipientPhone || 'BLR'}.`;
       case 'shop':
-        return `Tabbatar da sayayya. Za ku biya kudin CFA ${haoussaAmount}.`;
+        return `Tabbatar da sayayya. Za ku biya kudi ${haoussaAmount}.`;
       case 'transfer_agency': {
         const phonePairsHa = formatPhoneByPairs(recipientPhone, 'ha');
         const phonePart = phonePairsHa ? `lamba ${phonePairsHa}` : '';
         const who = targetName && phonePart
           ? `${targetName}, ${phonePart}`
           : (targetName || phonePart || 'abokin ciniki');
-        return `Tabbatar da aikawa. Za ku tura kudin CFA ${haoussaAmount} don amsa a ofishin Niger Telecoms ga ${who}.`;
+        return `Tabbatar da aikawa. Za ku tura kudi ${haoussaAmount} don amsa a ofishin Niger Telecoms ga ${who}.`;
       }
       case 'withdraw':
-        return `Tabbatar da cire kudi. Za ku cire kudin CFA ${haoussaAmount} a ofishin Niger Telecoms.`;
+        return `Tabbatar da cire kudi. Za ku cire kudi ${haoussaAmount} a ofishin Niger Telecoms.`;
       case 'transfer_p2p':
       default:
-        return `Tabbatar da aikawa. Za ku tura kudin CFA ${haoussaAmount} ga ${targetName || recipientPhone || 'abokin ciniki'}.`;
+        return `Tabbatar da aikawa. Za ku tura kudi ${haoussaAmount} ga ${targetName || recipientPhone || 'abokin ciniki'}.`;
     }
   }
 

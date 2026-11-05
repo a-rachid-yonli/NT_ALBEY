@@ -149,7 +149,7 @@ export default function VoiceAssistantButton({
       <View style={styles.headerRow}>
         <View style={styles.titleWrap}>
           <IconSpeaker color="#008933" size={17} />
-          <Text style={styles.titleText}>Assistance Vocale</Text>
+          <Text style={styles.titleText}>Confirmation Vocale</Text>
         </View>
 
         {isPlaying && (
