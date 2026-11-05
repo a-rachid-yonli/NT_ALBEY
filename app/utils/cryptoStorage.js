@@ -8,6 +8,7 @@
 
 import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { generateSecureToken } from './cryptoRandom';
 
 const MASTER_KEY_ALIAS = 'ntalbey_storage_master_key_v1';
 const SECURE_OPTS = {
@@ -25,13 +26,8 @@ async function getMasterKey() {
   try {
     let key = await SecureStore.getItemAsync(MASTER_KEY_ALIAS, SECURE_OPTS);
     if (!key) {
-      // Génération d'une clé aléatoire de 32 caractères
-      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()_+';
-      let randomKey = '';
-      for (let i = 0; i < 32; i++) {
-        randomKey += chars.charAt(Math.floor(Math.random() * chars.length));
-      }
-      key = randomKey;
+      // Génération CSPRNG d'une clé maîtresse de 32 caractères hexadécimaux
+      key = generateSecureToken(32);
       await SecureStore.setItemAsync(MASTER_KEY_ALIAS, key, SECURE_OPTS);
     }
     cachedMasterKey = key;

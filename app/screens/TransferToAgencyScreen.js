@@ -25,6 +25,7 @@ import {
   Keyboard,
   PanResponder,
   Vibration,
+  BackHandler,
 } from 'react-native';
 import { TranslatedText as Text, TranslatedTextInput as TextInput, TranslatedAlert as Alert, ThemedView as View, ThemedTouchableOpacity as TouchableOpacity, ThemedScrollView as ScrollView, ThemedKeyboardAvoidingView as KeyboardAvoidingView } from '../context/LanguageContext';
 import { humanizeError } from '../utils/errorHandler';
@@ -46,6 +47,7 @@ import SuccessCheckmarkOverlay from '../components/SuccessCheckmarkOverlay';
 import { triggerAmountShake, triggerAmountPop, getAmountErrorMessage } from '../utils/amountEffects';
 import { triggerSelectionHaptic } from '../utils/haptics';
 import { copySecurely } from '../utils/secureClipboard';
+import { generateSecureNumericCode, generateSecureToken } from '../utils/cryptoRandom';
 import { verifyTransactionAuth, AUTH_METHOD, AUTH_CANCELLED } from '../utils/transactionAuth';
 import { isValidPin } from '../utils/validators';
 
@@ -530,6 +532,7 @@ export default function TransferToAgencyScreen({ navigation }) {
   // Exécution du transfert
   // ═════════════════════════════════════════════════════════
   const executeTransfer = async () => {
+    if (isSending) return; // 🔒 Guard anti-double clic
     if (!transactionDetails) return;
 
     const departementId = transactionDetails.departementId;
@@ -551,6 +554,7 @@ export default function TransferToAgencyScreen({ navigation }) {
     setIsSending(true);
 
     try {
+      const idempotencyKey = `agency_${Date.now()}_${generateSecureToken(16)}`;
       const result = await API.transferToAgency({
         departement_id:    departementId,
         amount:            Number(transactionDetails.amount),
@@ -558,6 +562,7 @@ export default function TransferToAgencyScreen({ navigation }) {
         receiver_phone:    receiverPhone,
         sender_first_name: sFirst,
         sender_last_name:  sLast,
+        idempotency_key:   idempotencyKey,
       });
 
       const grossAmount = parseFloat(result.gross_amount) || Number(transactionDetails.amount);
@@ -666,7 +671,7 @@ export default function TransferToAgencyScreen({ navigation }) {
 
   const generateWithdrawCode = () => {
     const prefix = 'NT';
-    const random = String(Math.floor(100000 + Math.random() * 900000));
+    const random = generateSecureNumericCode(6);
     const date = new Date();
     const day = String(date.getDate()).padStart(2, '0');
     const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -900,6 +905,20 @@ ${details.feesIncluded ? '✅ Frais inclus' : '❌ Hors frais'}
     setPinRequired(false);
     navigation.goBack();
   };
+
+  // 🔒 Protection anti-double transfert : Bloque le bouton retour physique Android pendant l'émission
+  useEffect(() => {
+    const onBackPress = () => {
+      if (isSending) return true;
+      if (receiptModalVisible) {
+        finishTransfer();
+        return true;
+      }
+      return false;
+    };
+    const backSub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => backSub.remove();
+  }, [isSending, receiptModalVisible]);
 
   const filteredDepartements = departements.filter((d) =>
     String(d.designation || '').toLowerCase().includes(regionSearch.toLowerCase().trim())

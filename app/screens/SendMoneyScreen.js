@@ -20,6 +20,7 @@ import {
   Keyboard,
   Vibration,
   PanResponder,
+  BackHandler,
 } from 'react-native';
 import { TranslatedText as Text, TranslatedTextInput as TextInput, TranslatedAlert as Alert, ThemedView as View, ThemedTouchableOpacity as TouchableOpacity, ThemedScrollView as ScrollView, ThemedKeyboardAvoidingView as KeyboardAvoidingView } from '../context/LanguageContext';
 import { humanizeError } from '../utils/errorHandler';
@@ -48,6 +49,7 @@ import { isDeviceCompromised, guardSensitiveOperation } from '../utils/security'
 import { triggerAmountShake, triggerAmountPop, getAmountErrorMessage } from '../utils/amountEffects';
 import { triggerSelectionHaptic } from '../utils/haptics';
 import { copySecurely } from '../utils/secureClipboard';
+import { generateSecureToken } from '../utils/cryptoRandom';
 
 const NOTIFIED_TX_IDS_KEY = '@ntalbey_notified_tx_ids';
 const RECENT_AMOUNTS_KEY = '@ntalbey_recent_amounts_by_phone';
@@ -1139,6 +1141,7 @@ export default function SendMoneyScreen({ navigation }) {
   // ENVOI
   // ═════════════════════════════════════════════════════════
   const executeTransfer = async () => {
+    if (isSending) return; // 🔒 Guard anti-double clic / anti-rebond immédiat
     if (!selectedContact) return;
     if (isDeviceCompromised()) {
       Alert.alert('🔒 Opération bloquée', 'Les transactions sont désactivées sur un appareil rooté.');
@@ -1165,9 +1168,11 @@ export default function SendMoneyScreen({ navigation }) {
     setIsSending(true);
 
     try {
+      const idempotencyKey = `p2p_${Date.now()}_${generateSecureToken(16)}`;
       const result = await API.accountToAccount({
         receiver_phone: receiverPhone,
         amount: amountValue,
+        idempotency_key: idempotencyKey,
       });
 
       const grossAmount = Number(result.gross_amount) || amountValue;
@@ -1401,6 +1406,20 @@ export default function SendMoneyScreen({ navigation }) {
       routes: [{ name: 'Home' }],
     });
   };
+
+  // 🔒 Protection anti-double débit : Bloque le bouton retour physique Android pendant l'émission
+  useEffect(() => {
+    const onBackPress = () => {
+      if (isSending) return true;
+      if (receiptModalVisible) {
+        finishSend();
+        return true;
+      }
+      return false;
+    };
+    const backSub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => backSub.remove();
+  }, [isSending, receiptModalVisible]);
 
   const startNewTransfer = () => {
     hapticTap('light');

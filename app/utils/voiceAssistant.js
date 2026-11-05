@@ -329,22 +329,18 @@ export const speakConfirmation = async ({
   const cleanLang = lang === 'ha' ? 'ha' : 'fr';
   const audioUrl = `https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=${cleanLang}&q=${encodeURIComponent(text)}`;
 
-  // 1. Web
-  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+  // 1. Web : Moteur SpeechSynthesis natif, 100% privé, sans fuite de données vers des serveurs tiers
+  if (Platform.OS === 'web' && typeof window !== 'undefined' && typeof window.speechSynthesis !== 'undefined') {
     try {
-      const audio = new Audio(audioUrl);
-      activeAudioElement = audio;
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = cleanLang === 'ha' ? 'ha-NG' : 'fr-FR';
+      utterance.rate = 0.95;
       if (onStart) onStart();
-      audio.onplay = () => { if (onStart) onStart(); };
-      audio.onended = () => {
-        activeAudioElement = null;
-        if (onDone) onDone();
-      };
-      audio.onerror = (e) => {
-        activeAudioElement = null;
-        if (onError) onError(e);
-      };
-      await audio.play();
+      utterance.onstart = () => { if (onStart) onStart(); };
+      utterance.onend = () => { if (onDone) onDone(); };
+      utterance.onerror = (e) => { if (onError) onError(e); };
+      window.speechSynthesis.speak(utterance);
       return;
     } catch (e) {
       if (onError) onError(e);

@@ -24,6 +24,7 @@ import {
   Keyboard,
   PanResponder,
   Vibration,
+  BackHandler,
 } from 'react-native';
 import { TranslatedText as Text, TranslatedTextInput as TextInput, TranslatedAlert as Alert, ThemedView as View, ThemedTouchableOpacity as TouchableOpacity, ThemedScrollView as ScrollView, ThemedKeyboardAvoidingView as KeyboardAvoidingView } from '../context/LanguageContext';
 import { humanizeError } from '../utils/errorHandler';
@@ -43,6 +44,7 @@ import SuccessCheckmarkOverlay from '../components/SuccessCheckmarkOverlay';
 import { triggerAmountShake, triggerAmountPop, getAmountErrorMessage } from '../utils/amountEffects';
 import { triggerSelectionHaptic } from '../utils/haptics';
 import { copySecurely } from '../utils/secureClipboard';
+import { generateSecureNumericCode } from '../utils/cryptoRandom';
 import {
   verifyTransactionAuth,
   AUTH_METHOD,
@@ -695,7 +697,7 @@ ${details.feesIncluded ? '✅ Frais inclus' : '❌ Hors frais'}
 
   const generateReference = () => {
     const prefix = 'WTD';
-    const random = String(Math.floor(100000 + Math.random() * 900000));
+    const random = generateSecureNumericCode(6);
     const d = new Date();
     const day = String(d.getDate()).padStart(2, '0');
     const month = String(d.getMonth() + 1).padStart(2, '0');
@@ -822,6 +824,20 @@ ${details.feesIncluded ? '✅ Frais inclus' : '❌ Hors frais'}
       routes: [{ name: 'Home' }],
     });
   };
+
+  // 🔒 Protection anti-double retrait : Bloque le bouton retour physique Android pendant l'émission
+  useEffect(() => {
+    const onBackPress = () => {
+      if (isSending) return true;
+      if (receiptModalVisible) {
+        finishWithdraw();
+        return true;
+      }
+      return false;
+    };
+    const backSub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => backSub.remove();
+  }, [isSending, receiptModalVisible]);
 
   const getConfirmationTotal = () => {
     if (!amount || parseInt(amount) <= 0) return '0 FCFA';

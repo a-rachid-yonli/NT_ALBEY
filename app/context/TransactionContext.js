@@ -20,6 +20,7 @@ import React, {
   useRef,
 } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { CryptoStorage } from '../utils/cryptoStorage';
 import { API } from '../services/api';
 import { useAuth } from './AuthContext';
 import { getShopTxs } from '../utils/shopTxStore';
@@ -563,9 +564,9 @@ export function TransactionProvider({ children }) {
         },
       });
 
-      // 💾 Sauvegarde du cache hors-ligne (30 dernières transactions + solde)
+      // 💾 Sauvegarde du cache hors-ligne chiffré au repos (OWASP MASVS-STORAGE / PCI-DSS)
       try {
-        await AsyncStorage.setItem(
+        await CryptoStorage.setItem(
           `@ntalbey_tx_cache_${userId}`,
           JSON.stringify({
             wallet,
@@ -585,9 +586,12 @@ export function TransactionProvider({ children }) {
       if (!isMountedRef.current) return;
       if (__DEV__) console.warn('⚠️ Erreur chargement :', error?.message);
       try {
-        const cachedRaw = await AsyncStorage.getItem(`@ntalbey_tx_cache_${userId}`);
+        let cachedRaw = await CryptoStorage.getItem(`@ntalbey_tx_cache_${userId}`);
+        if (!cachedRaw) {
+          cachedRaw = await AsyncStorage.getItem(`@ntalbey_tx_cache_${userId}`);
+        }
         if (cachedRaw) {
-          const cached = JSON.parse(cachedRaw);
+          const cached = typeof cachedRaw === 'string' ? JSON.parse(cachedRaw) : cachedRaw;
           if (cached?.wallet) {
             dispatch({ type: SET_WALLET, payload: cached.wallet, isOfflineCache: true });
           }

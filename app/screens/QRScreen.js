@@ -307,13 +307,41 @@ const QRScannerTab = ({ navigation }) => {
 
   const handleOpenUrl = async (url) => {
     try {
-      const supported = await Linking.canOpenURL(url);
-      if (supported) {
-        await Linking.openURL(url);
-        closeResult();
-      } else {
-        Alert.alert(t('common.error'), 'Impossible d\'ouvrir ce lien');
+      // 🛡️ Protection anti-Quishing / Phishing (OWASP MASVS-PLATFORM)
+      // N'autorise que les protocoles http/https stricts
+      if (!/^https?:\/\//i.test(url)) {
+        Alert.alert(t('common.error'), 'Protocole de lien non sécurisé ou non autorisé.');
+        return;
       }
+
+      // Extraction du nom de domaine pour avertir l'utilisateur
+      let domain = url;
+      try {
+        const matches = url.match(/^https?:\/\/([^/?#]+)(?:[/?#]|$)/i);
+        if (matches && matches[1]) {
+          domain = matches[1];
+        }
+      } catch (_) {}
+
+      Alert.alert(
+        '⚠️ Avertissement de sécurité',
+        `Vous êtes sur le point d'ouvrir un lien externe :\n\n🌐 ${domain}\n\nAssurez-vous de faire confiance à ce site avant de continuer.`,
+        [
+          { text: 'Annuler', style: 'cancel' },
+          {
+            text: 'Ouvrir le lien',
+            onPress: async () => {
+              const supported = await Linking.canOpenURL(url);
+              if (supported) {
+                await Linking.openURL(url);
+                closeResult();
+              } else {
+                Alert.alert(t('common.error'), 'Impossible d\'ouvrir ce lien');
+              }
+            },
+          },
+        ]
+      );
     } catch (e) {
       Alert.alert(t('common.error'), 'Lien invalide');
     }

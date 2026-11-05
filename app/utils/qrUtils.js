@@ -92,7 +92,14 @@ export const decodeQRData = (raw) => {
     const parsed = JSON.parse(decodeURIComponent(decoded));
 
     if (typeof parsed.exp !== 'number') return null;
-    if (parsed.exp < Math.floor(Date.now() / 1000)) return null;
+    const nowSec = Math.floor(Date.now() / 1000);
+    // Anti-replay : rejet si expiré ou si date d'expiration déraisonnablement lointaine (> 10 min)
+    if (parsed.exp < nowSec || parsed.exp > nowSec + 10 * 60) return null;
+    // Validation du numéro de téléphone (éviter injection ou payload corrompu)
+    if (parsed.phone) {
+      const cleanPhone = String(parsed.phone).replace(/\D/g, '');
+      if (cleanPhone.length < 8 || cleanPhone.length > 15) return null;
+    }
 
     return parsed;
   } catch (e) {
