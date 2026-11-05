@@ -327,8 +327,7 @@ export const speakConfirmation = async ({
   await stopVoice();
 
   const cleanLang = lang === 'ha' ? 'ha' : 'fr';
-  // 🎙️ Utilisation du pipeline vocal neural optimisé (client=gtx) avec rendu haute fidélité
-  const audioUrl = `https://translate.google.com/translate_tts?ie=UTF-8&client=gtx&tl=${cleanLang}&q=${encodeURIComponent(text)}`;
+  const audioUrl = `https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=${cleanLang}&q=${encodeURIComponent(text)}`;
 
   // 1. Web
   if (Platform.OS === 'web' && typeof window !== 'undefined') {
