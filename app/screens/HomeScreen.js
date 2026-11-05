@@ -24,6 +24,7 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import MainLayout from '../components/MainLayout';
 import { useTransactions } from '../context/TransactionContext';
+import { useUltraLite } from '../context/UltraLiteContext';
 import { API } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useTranslation, TranslatedText as Text, TranslatedTextInput as TextInput, TranslatedAlert as Alert, ThemedView as View, ThemedTouchableOpacity as TouchableOpacity, ThemedScrollView as ScrollView, ThemedKeyboardAvoidingView as KeyboardAvoidingView } from '../context/LanguageContext';
@@ -563,6 +564,7 @@ export default function HomeScreen({ navigation }) {
   const scrollViewRef = useRef(null);
 
   const { balance, refreshWallet, wallet, isLoading: walletLoading } = useTransactions();
+  const { isUltraLite } = useUltraLite();
 
   const [phoneData, setPhoneData] = useState(null);
   const [isPhoneLoading, setIsPhoneLoading] = useState(true);
@@ -609,13 +611,14 @@ export default function HomeScreen({ navigation }) {
   useFocusEffect(
     useCallback(() => {
       refreshWallet();
+      const intervalMs = isUltraLite ? 120000 : AUTO_REFRESH_INTERVAL_MS;
       const interval = setInterval(() => {
         if (AppState.currentState === 'active') {
           refreshWallet();
         }
-      }, AUTO_REFRESH_INTERVAL_MS);
+      }, intervalMs);
       return () => clearInterval(interval);
-    }, [refreshWallet])
+    }, [refreshWallet, isUltraLite])
   );
 
   const loadUserAndPhoneData = useCallback(async () => {

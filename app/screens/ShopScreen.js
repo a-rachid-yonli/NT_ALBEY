@@ -344,15 +344,24 @@ const hapticTap = (intensity = 'light') => {
    COMPOSANT PRINCIPAL
    ═══════════════════════════════════════════════════════════════════════ */
 
-export default function ShopScreen({ navigation }) {
+export default function ShopScreen({ navigation, route }) {
   const insets = useSafeAreaInsets();
   const { width = 400, height = 800 } = useWindowDimensions();
 
   /* ─── Navigation interne ─────────────────────────────────────────── */
-  const [selectedCategory, setSelectedCategory] = useState(null);
+  const [selectedCategory, setSelectedCategory] = useState(route?.params?.initialCategory || null);
   const [selectedProduct, setSelectedProduct]   = useState(null);
   const [mainCategories, setMainCategories]     = useState([]);
   const [isLoading, setIsLoading]               = useState(true);
+
+  useEffect(() => {
+    if (route?.params?.initialCategory) {
+      setSelectedCategory(route.params.initialCategory);
+      if (route.params.initialCategory === 'credit' && route.params.initialAmount) {
+        setAirtimeAmount(String(route.params.initialAmount));
+      }
+    }
+  }, [route?.params]);
 
   /* ─── Modal + Auth ───────────────────────────────────────────────── */
   const [modalVisible, setModalVisible]         = useState(false);

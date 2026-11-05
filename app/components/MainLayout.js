@@ -22,6 +22,8 @@ import { useTranslation, TranslatedText as Text, TranslatedAlert as Alert, Theme
 import { AVAILABLE_LANGUAGES } from '../translations';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
+import { useUltraLite } from '../context/UltraLiteContext';
+import DisAlbeyAssistantModal from './DisAlbeyAssistantModal';
 import KycVerificationModal, { getSavedKycStatus } from './KycVerificationModal';
 import { isDeviceCompromised } from '../utils/security';
 import { AppTheme } from './AppTheme';
@@ -242,9 +244,10 @@ const BottomNav = ({ active, navigation }) => {
   );
 };
 
-const HamburgerMenu = ({ visible, onClose, navigation, user = {}, kycStatus = null, isCompromised = false }) => {
+const HamburgerMenu = ({ visible, onClose, navigation, user = {}, kycStatus = null, isCompromised = false, onOpenAssistant }) => {
   const { t } = useTranslation();
   const { isDark, toggleTheme } = useTheme();
+  const { isUltraLite, toggleUltraLite } = useUltraLite();
   const insets = useSafeAreaInsets();
   const [kycModalVisible, setKycModalVisible] = useState(false);
   const [localKyc, setLocalKyc] = useState(null);
@@ -393,6 +396,56 @@ const HamburgerMenu = ({ visible, onClose, navigation, user = {}, kycStatus = nu
                 );
               })}
 
+              {/* DIS ALBEY ASSISTANT VOCAL */}
+              <TouchableOpacity
+                style={[styles.menuItem, styles.menuItemBordered, { borderTopWidth: 1, borderTopColor: COLORS.borderSoft }]}
+                onPress={() => {
+                  onClose();
+                  if (typeof onOpenAssistant === 'function') {
+                    setTimeout(onOpenAssistant, 200);
+                  }
+                }}
+                activeOpacity={0.65}
+              >
+                <View style={styles.menuItemIcon}>
+                  <Text style={{ fontSize: 18 }}>🎙️</Text>
+                </View>
+                <View style={styles.menuItemTextWrap}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Text style={styles.menuItemLabel}>Dis Albey</Text>
+                    <View style={styles.menuAiBadge}>
+                      <Text style={styles.menuAiBadgeText}>IA VOCALE</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.menuItemSubtitle} numberOfLines={1}>Assistant vocal (Français & Haoussa)</Text>
+                </View>
+                <View style={styles.menuItemChevron}>
+                  <MenuIconChevron />
+                </View>
+              </TouchableOpacity>
+
+              {/* MODE ULTRA LITE 2G */}
+              <TouchableOpacity
+                style={[styles.menuItem, styles.menuItemBordered, { borderTopWidth: 1, borderTopColor: COLORS.borderSoft }]}
+                onPress={toggleUltraLite}
+                activeOpacity={0.65}
+              >
+                <View style={styles.menuItemIcon}>
+                  <Text style={{ fontSize: 18 }}>⚡</Text>
+                </View>
+                <View style={styles.menuItemTextWrap}>
+                  <Text style={styles.menuItemLabel}>Mode Ultra Lite 2G</Text>
+                  <Text style={styles.menuItemSubtitle} numberOfLines={1}>
+                    {isUltraLite ? 'Activé (économie maximale)' : 'Désactivé (mode standard)'}
+                  </Text>
+                </View>
+                <View style={[styles.statusTogglePill, isUltraLite && styles.statusTogglePillActive]}>
+                  <Text style={[styles.statusTogglePillText, isUltraLite && styles.statusTogglePillTextActive]}>
+                    {isUltraLite ? 'ON' : 'OFF'}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+
               <TouchableOpacity
                 style={[styles.menuItem, styles.menuItemBordered, { borderTopWidth: 1, borderTopColor: COLORS.borderSoft }]}
                 onPress={toggleTheme}
@@ -448,7 +501,9 @@ export default function MainLayout({ children, activeScreen, onLogout }) {
   const { t, language, setLanguage } = useTranslation();
   const { logout } = useAuth();
   const { isDark, colors: themeColors } = useTheme();
+  const { isUltraLite, toggleUltraLite } = useUltraLite();
   const [menuVisible, setMenuVisible] = useState(false);
+  const [assistantVisible, setAssistantVisible] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [userProfile, setUserProfile] = useState(null);
   const [kycStatus, setKycStatus] = useState(null);
@@ -593,6 +648,18 @@ export default function MainLayout({ children, activeScreen, onLogout }) {
         </View>
 
         <View style={styles.rightIcons}>
+          {/* 🎙️ ASSISTANT VOCAL DIS ALBEY */}
+          <TouchableOpacity
+            style={styles.voiceAssistantHeaderBtn}
+            onPress={() => setAssistantVisible(true)}
+            activeOpacity={0.8}
+          >
+            <View style={styles.voiceAssistantIconCircle}>
+              <Text style={{ fontSize: 13 }}>🎙️</Text>
+            </View>
+            <Text style={styles.voiceAssistantHeaderLabel}>Albey</Text>
+          </TouchableOpacity>
+
           <TouchableOpacity
             style={styles.languageHeaderButton}
             onPress={() => setLanguageModalVisible(true)}
@@ -628,6 +695,22 @@ export default function MainLayout({ children, activeScreen, onLogout }) {
         </View>
       </View>
 
+      {/* ⚡ BANDEAU MODE ULTRA LITE 2G */}
+      {isUltraLite && (
+        <View style={styles.ultraLiteBanner}>
+          <Text style={styles.ultraLiteBannerText}>
+            ⚡ Mode Ultra Lite 2G actif • Économie maximale (Data & Batterie)
+          </Text>
+          <TouchableOpacity
+            onPress={toggleUltraLite}
+            style={styles.ultraLiteBannerBtn}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.ultraLiteBannerBtnText}>Désactiver</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       <View style={styles.content}>
         {children}
       </View>
@@ -641,6 +724,7 @@ export default function MainLayout({ children, activeScreen, onLogout }) {
         user={userProfile || {}}
         kycStatus={kycStatus}
         isCompromised={isCompromised}
+        onOpenAssistant={() => setAssistantVisible(true)}
       />
 
       <LanguageModal
@@ -648,6 +732,13 @@ export default function MainLayout({ children, activeScreen, onLogout }) {
         onClose={() => setLanguageModalVisible(false)}
         currentLanguage={language}
         onSelect={handleLanguageSelect}
+      />
+
+      {/* 🎙️ ASSISTANT VOCAL INTELLIGENT DIS ALBEY */}
+      <DisAlbeyAssistantModal
+        visible={assistantVisible}
+        onClose={() => setAssistantVisible(false)}
+        navigation={navigation}
       />
     </View>
   );
@@ -707,6 +798,88 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.borderSoft,
     position: 'relative',
+  },
+  voiceAssistantHeaderBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#E8F5E9',
+    borderWidth: 1,
+    borderColor: '#C8E6C9',
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 16,
+    gap: 4,
+    marginRight: 4,
+  },
+  voiceAssistantIconCircle: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#008933',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  voiceAssistantHeaderLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#008933',
+  },
+  ultraLiteBanner: {
+    backgroundColor: '#0F172A',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 7,
+  },
+  ultraLiteBannerText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#F8FAFC',
+    flex: 1,
+    letterSpacing: 0.2,
+  },
+  ultraLiteBannerBtn: {
+    backgroundColor: '#334155',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+    marginLeft: 8,
+  },
+  ultraLiteBannerBtnText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#F1F5F9',
+  },
+  menuAiBadge: {
+    backgroundColor: '#FFF3E0',
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#FFE0B2',
+  },
+  menuAiBadgeText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#FF6600',
+  },
+  statusTogglePill: {
+    backgroundColor: '#E2E8F0',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+  },
+  statusTogglePillActive: {
+    backgroundColor: '#008933',
+  },
+  statusTogglePillText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#64748B',
+  },
+  statusTogglePillTextActive: {
+    color: '#FFFFFF',
   },
   languageHeaderButton: {
     minWidth: 38,

@@ -10,6 +10,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 
 import { TransactionProvider } from './context/TransactionContext';
+import { UltraLiteProvider } from './context/UltraLiteContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { LanguageProvider } from './context/LanguageContext';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
@@ -113,13 +114,15 @@ export default function App() {
             <AuthProvider>
               <AppLockProvider>
                 <TransactionProvider>
-                  <ToastProvider>
-                    <RootNavigator />
-                    <AppLockOverlay />
-                    <ToastOverlay />
-                    <NetworkStatusBanner />
-                    <PremiumAlertOverlay />
-                  </ToastProvider>
+                  <UltraLiteProvider>
+                    <ToastProvider>
+                      <RootNavigator />
+                      <AppLockOverlay />
+                      <ToastOverlay />
+                      <NetworkStatusBanner />
+                      <PremiumAlertOverlay />
+                    </ToastProvider>
+                  </UltraLiteProvider>
                 </TransactionProvider>
               </AppLockProvider>
             </AuthProvider>

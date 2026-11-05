@@ -774,7 +774,14 @@ export default function SendMoneyScreen({ navigation }) {
     if (prefilledApplied.current) return;
     if (isLoadingContacts) return;
     const params = route.params;
-    if (!params || !params.prefilledPhone) {
+    if (!params) {
+      prefilledApplied.current = true;
+      return;
+    }
+    if (params.prefilledAmount || params.initialAmount) {
+      setAmount(String(params.prefilledAmount || params.initialAmount));
+    }
+    if (!params.prefilledPhone) {
       prefilledApplied.current = true;
       return;
     }
@@ -786,8 +793,8 @@ export default function SendMoneyScreen({ navigation }) {
       setManualPhone(cleanPhone);
       setPickerVisible(true);
     }
-    if (params.prefilledAmount) {
-      setAmount(String(params.prefilledAmount));
+    if (params.prefilledAmount || params.initialAmount) {
+      setAmount(String(params.prefilledAmount || params.initialAmount));
     }
     prefilledApplied.current = true;
     navigation.setParams({
