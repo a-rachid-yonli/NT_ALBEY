@@ -39,6 +39,8 @@ import { getLogoBase64 } from '../utils/pdfUtils';
 import { useTransactions } from '../context/TransactionContext';
 import { saveTxMetadata } from '../utils/txRefCache';
 import { verifyTransactionAuth, AUTH_METHOD, AUTH_CANCELLED } from '../utils/transactionAuth';
+import { detectNigerOperator } from '../utils/operatorDetector';
+import { checkPersistentPinLock, formatRemainingCountdown } from '../utils/rateLimiter';
 import { parseAmount, isValidQRPayload } from '../utils/validators';
 import { isDeviceCompromised, guardSensitiveOperation } from '../utils/security';
 
@@ -361,6 +363,7 @@ export default function SendMoneyScreen({ navigation }) {
   const [pinRequired, setPinRequired] = useState(false);
   const [pin, setPin] = useState('');
   const [pinVisible, setPinVisible] = useState(false);
+  const [pinLockout, setPinLockout] = useState({ isLocked: false, remainingMs: 0 });
   const pinInputRef = useRef(null);
 
   // ─── Reçu ──────────────────────────────────────────────
@@ -1112,11 +1115,46 @@ export default function SendMoneyScreen({ navigation }) {
     }
 
     setPinRequired(true);
-    setTimeout(() => pinInputRef.current?.focus(), 150);
+    if (currentUserPhone) {
+      checkPersistentPinLock(currentUserPhone).then(status => {
+        setPinLockout(status);
+        if (!status.isLocked) {
+          setTimeout(() => pinInputRef.current?.focus(), 150);
+        }
+      });
+    } else {
+      setTimeout(() => pinInputRef.current?.focus(), 150);
+    }
   };
+
+  // ⏱️ Décompte dynamique quand le PIN est bloqué
+  useEffect(() => {
+    if (!pinLockout.isLocked || !currentUserPhone) return;
+    const timer = setInterval(async () => {
+      const status = await checkPersistentPinLock(currentUserPhone);
+      if (!status.isLocked) {
+        setPinLockout({ isLocked: false, remainingMs: 0 });
+      } else {
+        setPinLockout(status);
+      }
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [pinLockout.isLocked, currentUserPhone]);
 
   const confirmWithPin = async () => {
     if (isSending || isVerifyingAuth) return;
+    if (currentUserPhone) {
+      const lockStatus = await checkPersistentPinLock(currentUserPhone);
+      if (lockStatus.isLocked) {
+        setPinLockout(lockStatus);
+        showToast(
+          'error',
+          'Compte bloqué (5 min)',
+          `Trop de tentatives incorrectes. Réessayez dans ${formatRemainingCountdown(lockStatus.remainingMs)}.`
+        );
+        return;
+      }
+    }
     if (!pin || pin.length < 8 || pin.length > 20) {
       showToast('error', 'Code incorrect', 'Le mot de passe doit contenir entre 8 et 20 caractères.');
       return;
@@ -1127,9 +1165,14 @@ export default function SendMoneyScreen({ navigation }) {
       await verifyTransactionAuth(AUTH_METHOD.PIN, pin);
       setPin('');
       setPinRequired(false);
+      setPinLockout({ isLocked: false, remainingMs: 0 });
       await executeTransfer();
     } catch (error) {
-      showToast('error', 'Code incorrect', error.message || 'Le mot de passe saisi est incorrect.');
+      if (currentUserPhone) {
+        const lockStatus = await checkPersistentPinLock(currentUserPhone);
+        setPinLockout(lockStatus);
+      }
+      showToast('error', 'Authentification échouée', error.message || 'Le mot de passe saisi est incorrect.');
       setPin('');
     } finally {
       setIsVerifyingAuth(false);
@@ -1319,9 +1362,21 @@ export default function SendMoneyScreen({ navigation }) {
                   <Text style={styles.beneficiaryName} numberOfLines={1}>
                     {selectedContact.name}
                   </Text>
-                  <Text style={styles.beneficiaryPhone}>
-                    +227 {selectedContact.phone}
-                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                    <Text style={styles.beneficiaryPhone}>
+                      +227 {selectedContact.phone}
+                    </Text>
+                    {(() => {
+                      const op = detectNigerOperator(selectedContact.phone);
+                      if (!op) return null;
+                      return (
+                        <View style={[styles.contactOperatorBadge, { backgroundColor: op.bgColor, borderColor: op.borderColor }]}>
+                          <View style={[styles.contactOperatorDot, { backgroundColor: op.color }]} />
+                          <Text style={[styles.contactOperatorText, { color: op.textColor }]}>{op.shortName}</Text>
+                        </View>
+                      );
+                    })()}
+                  </View>
                 </View>
                 {selectedContact.isFavorite && (
                   <View style={styles.favoriteBadge}>
@@ -1361,6 +1416,7 @@ export default function SendMoneyScreen({ navigation }) {
             }
           }}
           currentValue={selectedContact?.phone || ''}
+          transactions={transactions}
         />
 
         <Text style={[styles.label, { marginTop: 28 }]}>Montant</Text>
@@ -1466,63 +1522,88 @@ export default function SendMoneyScreen({ navigation }) {
 
         {pinRequired && (
           <View style={styles.pinInline}>
-            <View style={styles.pinInlineHeader}>
-              <Text style={styles.pinInlineLabel}>Confirmez avec votre mot de passe</Text>
-              <Text style={styles.pinInlineCounter}>{pin.length}/20</Text>
-            </View>
-            <View style={styles.pinInlineRow}>
-              <TextInput
-                ref={pinInputRef}
-                style={styles.pinInlineInput}
-                placeholder="••••••••"
-                placeholderTextColor={COLORS.textMuted}
-                secureTextEntry={!pinVisible}
-                autoCapitalize="none"
-                autoCorrect={false}
-                maxLength={20}
-                value={pin}
-                onChangeText={setPin}
-                editable={!isVerifyingAuth && !isSending}
-                textAlign="center"
-              />
-              <TouchableOpacity
-                style={styles.pinInlineEye}
-                onPress={() => setPinVisible(v => !v)}
-                activeOpacity={0.7}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              >
-                {pinVisible ? <IconEyeOpen /> : <IconEyeClosed />}
-              </TouchableOpacity>
-            </View>
-            <View style={styles.pinInlineActions}>
-              <TouchableOpacity
-                style={styles.pinInlineCancel}
-                onPress={() => {
-                  setPinRequired(false);
-                  setPin('');
-                  Keyboard.dismiss();
-                }}
-                disabled={isVerifyingAuth || isSending}
-                activeOpacity={0.75}
-              >
-                <Text style={styles.pinInlineCancelText}>Annuler</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.pinInlineConfirm,
-                  (!pin || pin.length < 8 || isVerifyingAuth || isSending) && styles.pinInlineConfirmDisabled,
-                ]}
-                onPress={confirmWithPin}
-                disabled={!pin || pin.length < 8 || isVerifyingAuth || isSending}
-                activeOpacity={0.85}
-              >
-                {isVerifyingAuth || isSending ? (
-                  <ActivityIndicator color="#FFFFFF" size="small" />
-                ) : (
-                  <Text style={styles.pinInlineConfirmText}>Confirmer</Text>
-                )}
-              </TouchableOpacity>
-            </View>
+            {pinLockout.isLocked ? (
+              <View style={styles.pinLockoutContainer}>
+                <Text style={styles.pinLockoutTitle}>⏳ Compte temporairement bloqué</Text>
+                <Text style={styles.pinLockoutTimer}>
+                  {formatRemainingCountdown(pinLockout.remainingMs)}
+                </Text>
+                <Text style={styles.pinLockoutSub}>
+                  3 tentatives incorrectes consécutives ont été détectées.
+                </Text>
+                <TouchableOpacity
+                  style={styles.pinLockoutCancelBtn}
+                  onPress={() => {
+                    setPinRequired(false);
+                    setPin('');
+                    Keyboard.dismiss();
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.pinLockoutCancelText}>Fermer</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <>
+                <View style={styles.pinInlineHeader}>
+                  <Text style={styles.pinInlineLabel}>Confirmez avec votre mot de passe</Text>
+                  <Text style={styles.pinInlineCounter}>{pin.length}/20</Text>
+                </View>
+                <View style={styles.pinInlineRow}>
+                  <TextInput
+                    ref={pinInputRef}
+                    style={styles.pinInlineInput}
+                    placeholder="••••••••"
+                    placeholderTextColor={COLORS.textMuted}
+                    secureTextEntry={!pinVisible}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    maxLength={20}
+                    value={pin}
+                    onChangeText={setPin}
+                    editable={!isVerifyingAuth && !isSending}
+                    textAlign="center"
+                  />
+                  <TouchableOpacity
+                    style={styles.pinInlineEye}
+                    onPress={() => setPinVisible(v => !v)}
+                    activeOpacity={0.7}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  >
+                    {pinVisible ? <IconEyeOpen /> : <IconEyeClosed />}
+                  </TouchableOpacity>
+                </View>
+                <View style={styles.pinInlineActions}>
+                  <TouchableOpacity
+                    style={styles.pinInlineCancel}
+                    onPress={() => {
+                      setPinRequired(false);
+                      setPin('');
+                      Keyboard.dismiss();
+                    }}
+                    disabled={isVerifyingAuth || isSending}
+                    activeOpacity={0.75}
+                  >
+                    <Text style={styles.pinInlineCancelText}>Annuler</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.pinInlineConfirm,
+                      (!pin || pin.length < 8 || isVerifyingAuth || isSending) && styles.pinInlineConfirmDisabled,
+                    ]}
+                    onPress={confirmWithPin}
+                    disabled={!pin || pin.length < 8 || isVerifyingAuth || isSending}
+                    activeOpacity={0.85}
+                  >
+                    {isVerifyingAuth || isSending ? (
+                      <ActivityIndicator color="#FFFFFF" size="small" />
+                    ) : (
+                      <Text style={styles.pinInlineConfirmText}>Confirmer</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
           </View>
         )}
       </ScrollView>
@@ -1623,6 +1704,16 @@ export default function SendMoneyScreen({ navigation }) {
                 onChangeText={setManualPhone}
                 maxLength={15}
               />
+              {(() => {
+                const op = detectNigerOperator(manualPhone);
+                if (!op) return null;
+                return (
+                  <View style={[styles.inlineOperatorPill, { backgroundColor: op.bgColor, borderColor: op.borderColor }]}>
+                    <View style={[styles.contactOperatorDot, { backgroundColor: op.color }]} />
+                    <Text style={[styles.inlineOperatorText, { color: op.textColor }]}>{op.shortName}</Text>
+                  </View>
+                );
+              })()}
               {manualPhone.length >= 8 && (
                 <TouchableOpacity
                   style={styles.searchUseBtn}
@@ -1707,7 +1798,19 @@ export default function SendMoneyScreen({ navigation }) {
                           </View>
                         )}
                       </View>
-                      <Text style={styles.contactRowPhone}>+227 {contact.phone}</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                        <Text style={styles.contactRowPhone}>+227 {contact.phone}</Text>
+                        {(() => {
+                          const op = detectNigerOperator(contact.phone);
+                          if (!op) return null;
+                          return (
+                            <View style={[styles.contactOperatorBadge, { backgroundColor: op.bgColor, borderColor: op.borderColor }]}>
+                              <View style={[styles.contactOperatorDot, { backgroundColor: op.color }]} />
+                              <Text style={[styles.contactOperatorText, { color: op.textColor }]}>{op.shortName}</Text>
+                            </View>
+                          );
+                        })()}
+                      </View>
                     </View>
                   </TouchableOpacity>
                 ))
@@ -2536,6 +2639,81 @@ const styles = StyleSheet.create({
   contactRowStar: { width: 12, height: 12 },
   contactRowPhone: {
     fontSize: 11.5, color: COLORS.textMuted, fontWeight: '500',
+  },
+
+  // 🏷️ Badges opérateurs & lockout
+  contactOperatorBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 999,
+    borderWidth: 1,
+    gap: 4,
+  },
+  contactOperatorDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  contactOperatorText: {
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  inlineOperatorPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginRight: 6,
+    gap: 5,
+  },
+  inlineOperatorText: {
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  pinLockoutContainer: {
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1.5,
+    borderColor: '#EF4444',
+    borderRadius: 14,
+    padding: 16,
+    alignItems: 'center',
+  },
+  pinLockoutTitle: {
+    color: '#991B1B',
+    fontSize: 13,
+    fontWeight: '800',
+    marginBottom: 4,
+  },
+  pinLockoutTimer: {
+    color: '#DC2626',
+    fontSize: 18,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+    marginBottom: 6,
+  },
+  pinLockoutSub: {
+    color: '#7F1D1D',
+    fontSize: 11.5,
+    textAlign: 'center',
+    marginBottom: 12,
+    lineHeight: 16,
+  },
+  pinLockoutCancelBtn: {
+    backgroundColor: '#FEE2E2',
+    paddingVertical: 8,
+    paddingHorizontal: 20,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#FCA5A5',
+  },
+  pinLockoutCancelText: {
+    color: '#991B1B',
+    fontSize: 12.5,
+    fontWeight: '700',
   },
 
   // QR Scanner

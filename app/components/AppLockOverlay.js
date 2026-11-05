@@ -31,6 +31,10 @@ import {
   checkRateLimit,
   resetRateLimit,
   formatRetryAfter,
+  checkPersistentPinLock,
+  recordFailedPinAttempt,
+  resetPersistentPinLock,
+  formatRemainingCountdown,
 } from '../utils/rateLimiter';
 import { isValidPin, PIN_HELPER_TEXT } from '../utils/validators';
 
@@ -81,6 +85,7 @@ export default function AppLockOverlay() {
   const [error, setError] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
+  const [lockout, setLockout] = useState({ isLocked: false, remainingMs: 0 });
 
   const [deviceHasBiometric, setDeviceHasBiometric] = useState(false);
   const [userHasEnrolledBiometric, setUserHasEnrolledBiometric] = useState(false);
@@ -129,8 +134,35 @@ export default function AppLockOverlay() {
       setPinVisible(false);
       setIsVerifying(false);
       autoTriggeredRef.current = false;
+
+      // 🔒 Vérifier le verrou anti-brute force au verrouillage
+      if (user?.phone) {
+        checkPersistentPinLock(user.phone).then((status) => {
+          setLockout(status);
+          if (status.isLocked) {
+            setError(
+              `Compte temporairement bloqué. Réessayez dans ${formatRemainingCountdown(status.remainingMs)}.`
+            );
+          }
+        });
+      }
     }
-  }, [isLocked]);
+  }, [isLocked, user?.phone]);
+
+  // ⏱️ Décompte dynamique quand le compte est temporairement bloqué
+  useEffect(() => {
+    if (!lockout.isLocked || !user?.phone) return;
+    const interval = setInterval(async () => {
+      const status = await checkPersistentPinLock(user.phone);
+      if (!status.isLocked) {
+        setLockout({ isLocked: false, remainingMs: 0 });
+        setError('');
+      } else {
+        setLockout(status);
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [lockout.isLocked, user?.phone]);
 
   useEffect(() => {
     if (isLocked && isBiometricAvailable && !autoTriggeredRef.current) {
@@ -165,8 +197,12 @@ export default function AppLockOverlay() {
         try {
           await API.verifyBiometricForTransaction(user?.phone);
           resetRateLimit(`applock:${user?.phone || 'unknown'}`);
+          if (user?.phone) {
+            await resetPersistentPinLock(user.phone);
+          }
+          setLockout({ isLocked: false, remainingMs: 0 });
           triggerSuccessHaptic();
-        unlock();
+          unlock();
         } catch (backendErr) {
           if (__DEV__) console.log('⚠️ [AppLock] Vérif backend échouée');
           setError('Session biométrique invalide. Utilisez votre PIN.');
@@ -180,6 +216,18 @@ export default function AppLockOverlay() {
   };
 
   const handlePinSubmit = async () => {
+    // 🔒 1. Vérifier si le PIN est actuellement sous verrou anti-brute force
+    if (user?.phone) {
+      const lockStatus = await checkPersistentPinLock(user.phone);
+      if (lockStatus.isLocked) {
+        setLockout(lockStatus);
+        setError(
+          `Compte temporairement bloqué. Réessayez dans ${formatRemainingCountdown(lockStatus.remainingMs)}.`
+        );
+        return;
+      }
+    }
+
     // ✅ v3 : message uniformisé
     if (!isPinValid) {
       setError(PIN_HELPER_TEXT);
@@ -187,38 +235,35 @@ export default function AppLockOverlay() {
     }
     if (isVerifying) return;
 
-    const rateKey = `applock:${user?.phone || 'unknown'}`;
-    const limit = checkRateLimit(rateKey, 5, 5 * 60 * 1000);
-
-    if (!limit.allowed) {
-      setError(
-        `Trop de tentatives. Réessayez dans ${formatRetryAfter(limit.retryAfterMs)}.`
-      );
-      return;
-    }
-
     setIsVerifying(true);
     setError('');
     try {
       await API.verifyPin(pin);
-      resetRateLimit(rateKey);
+      if (user?.phone) {
+        await resetPersistentPinLock(user.phone);
+      }
+      setLockout({ isLocked: false, remainingMs: 0 });
       setPin('');
       setError('');
       unlock();
     } catch (e) {
-      registerFailedAttempt();
       setPin('');
-
-      const remaining = Math.max(0, limit.remaining - 1);
-      if (remaining <= 0) {
-        setError(t('appLock.tooManyAttempts'));
-      } else {
-        setError(
-          `${t('common.incorrectPin')} • ${remaining} ${
-            remaining > 1 ? t('appLock.attemptsLeft') : t('appLock.attemptLeft')
-          }`
-        );
+      let attemptsMsg = '';
+      if (user?.phone) {
+        const fail = await recordFailedPinAttempt(user.phone);
+        if (fail.isLocked) {
+          setLockout(fail);
+          setError(
+            `Compte bloqué pendant 5 minutes suite à 3 tentatives incorrectes (${formatRemainingCountdown(fail.remainingMs)} restantes).`
+          );
+          return;
+        } else {
+          const left = fail.remainingAttempts;
+          attemptsMsg = ` • Il vous reste ${left} tentative${left > 1 ? 's' : ''} avant blocage (5 min)`;
+        }
       }
+      registerFailedAttempt();
+      setError(`${t('common.incorrectPin')}${attemptsMsg}`);
       setTimeout(() => pinInputRef.current?.focus(), 100);
     } finally {
       setIsVerifying(false);
@@ -251,6 +296,18 @@ export default function AppLockOverlay() {
             <View style={styles.warningBanner}>
               <Text style={styles.warningText}>
                 ⚠️ Appareil compromis — biométrie désactivée. Utilisez votre PIN.
+              </Text>
+            </View>
+          )}
+
+          {lockout.isLocked && (
+            <View style={styles.lockoutBanner}>
+              <Text style={styles.lockoutTitle}>⏳ Compte temporairement verrouillé</Text>
+              <Text style={styles.lockoutCountdown}>
+                {formatRemainingCountdown(lockout.remainingMs)}
+              </Text>
+              <Text style={styles.lockoutHint}>
+                3 tentatives incorrectes détectées. Réessayez à la fin du décompte.
               </Text>
             </View>
           )}
@@ -291,9 +348,9 @@ export default function AppLockOverlay() {
           <View style={styles.pinContainer}>
             <TextInput
               ref={pinInputRef}
-              style={styles.pinInput}
-              placeholder="••••••••"
-              placeholderTextColor="#CCC"
+              style={[styles.pinInput, lockout.isLocked && styles.pinInputDisabled]}
+              placeholder={lockout.isLocked ? "Verrouillé (5 min)" : "••••••••"}
+              placeholderTextColor={lockout.isLocked ? "#EF4444" : "#CCC"}
               keyboardType="default"
               autoCapitalize="none"
               autoCorrect={false}
@@ -304,14 +361,14 @@ export default function AppLockOverlay() {
                 setPin(v);
                 if (error) setError('');
               }}
-              editable={!isVerifying}
+              editable={!isVerifying && !lockout.isLocked}
               textAlign="center"
             />
             <TouchableOpacity
               style={styles.pinEye}
               onPress={() => setPinVisible((v) => !v)}
               activeOpacity={0.7}
-              disabled={isVerifying}
+              disabled={isVerifying || lockout.isLocked}
               hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
             >
               {pinVisible ? <IconEyeOpen /> : <IconEyeClosed />}
@@ -323,7 +380,7 @@ export default function AppLockOverlay() {
             style={styles.toggleLabelWrapper}
             onPress={() => setPinVisible((v) => !v)}
             activeOpacity={0.7}
-            disabled={isVerifying}
+            disabled={isVerifying || lockout.isLocked}
           >
             <Text style={styles.toggleLabelText}>
               {pinVisible ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
@@ -340,16 +397,18 @@ export default function AppLockOverlay() {
           <TouchableOpacity
             style={[
               styles.unlockButton,
-              (!isPinValid || isVerifying) && styles.unlockButtonDisabled,
+              (!isPinValid || isVerifying || lockout.isLocked) && styles.unlockButtonDisabled,
             ]}
             onPress={handlePinSubmit}
-            disabled={!isPinValid || isVerifying}
+            disabled={!isPinValid || isVerifying || lockout.isLocked}
             activeOpacity={0.85}
           >
             {isVerifying ? (
               <ActivityIndicator color="#FFFFFF" size="small" />
             ) : (
-              <Text style={styles.unlockButtonText}>{t('appLock.unlock')}</Text>
+              <Text style={styles.unlockButtonText}>
+                {lockout.isLocked ? 'Verrouillé' : t('appLock.unlock')}
+              </Text>
             )}
           </TouchableOpacity>
         </View>
@@ -409,6 +468,41 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     textAlign: 'center',
+  },
+  lockoutBanner: {
+    backgroundColor: '#FEF2F2',
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    marginBottom: 16,
+    width: '100%',
+    borderWidth: 1.5,
+    borderColor: '#EF4444',
+    alignItems: 'center',
+  },
+  lockoutTitle: {
+    color: '#991B1B',
+    fontSize: 13,
+    fontWeight: '800',
+    marginBottom: 2,
+  },
+  lockoutCountdown: {
+    color: '#DC2626',
+    fontSize: 17,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+    marginBottom: 4,
+  },
+  lockoutHint: {
+    color: '#7F1D1D',
+    fontSize: 11,
+    textAlign: 'center',
+    fontWeight: '500',
+  },
+  pinInputDisabled: {
+    borderBottomColor: '#EF4444',
+    color: '#991B1B',
+    opacity: 0.7,
   },
   biometricButton: {
     alignItems: 'center',
