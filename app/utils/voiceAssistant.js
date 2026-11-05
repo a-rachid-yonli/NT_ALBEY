@@ -229,7 +229,7 @@ export function buildVoiceConfirmationText({
       }
       case 'withdraw': {
         const locPart = location ? `na ${location}` : '';
-        return `Tabbatar da cire kudi. Za ku cire kudi ${haoussaAmount} tsaba a ofishin Niger Telecoms${locPart ? ' na ' + location : ''}.`;
+        return `Tabbatar da cire kudi. Za ku cire kudi ${haoussaAmount} a ofishin Niger Telecoms${locPart ? ' na ' + location : ''}.`;
       }
       case 'transfer_p2p':
       default:
