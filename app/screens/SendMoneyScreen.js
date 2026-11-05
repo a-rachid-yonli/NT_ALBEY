@@ -45,6 +45,8 @@ import { detectNigerOperator } from '../utils/operatorDetector';
 import { checkPersistentPinLock, formatRemainingCountdown } from '../utils/rateLimiter';
 import { parseAmount, isValidQRPayload } from '../utils/validators';
 import { isDeviceCompromised, guardSensitiveOperation } from '../utils/security';
+import { triggerAmountShake, triggerAmountPop, getAmountErrorMessage } from '../utils/amountEffects';
+import { triggerSelectionHaptic } from '../utils/haptics';
 
 const NOTIFIED_TX_IDS_KEY = '@ntalbey_notified_tx_ids';
 const RECENT_AMOUNTS_KEY = '@ntalbey_recent_amounts_by_phone';
@@ -428,14 +430,24 @@ export default function SendMoneyScreen({ navigation }) {
 
   // ─── Validation montant inline ─────────────────────────
   const amountError = useMemo(() => {
-    if (numericAmount === 0) return null;
-    if (numericAmount < 100) return 'Minimum 100 FCFA';
-    if (numericAmount > balance) return 'Solde insuffisant';
-    return null;
+    return getAmountErrorMessage(numericAmount, balance, 100);
   }, [numericAmount, balance]);
 
-  // ─── Animation montant ─────────────────────────────────
+  // ─── Animations montant (Shake & Scale Pop) ─────────────
   const amountOpacity = useRef(new Animated.Value(1)).current;
+  const amountScale = useRef(new Animated.Value(1)).current;
+  const amountShakeAnim = useRef(new Animated.Value(0)).current;
+
+  // Détection du dépassement de solde pour déclencher le shake
+  const prevExceeded = useRef(false);
+  useEffect(() => {
+    const isExceeded = numericAmount > balance;
+    if (isExceeded && !prevExceeded.current) {
+      triggerAmountShake(amountShakeAnim);
+    }
+    prevExceeded.current = isExceeded;
+  }, [numericAmount, balance]);
+
   useEffect(() => {
     Animated.sequence([
       Animated.timing(amountOpacity, { toValue: 0.6, duration: 90, useNativeDriver: true }),
@@ -1233,7 +1245,13 @@ export default function SendMoneyScreen({ navigation }) {
     !isVerifyingAuth;
 
   const handleConfirm = async () => {
-    if (!canSend) return;
+    if (!canSend) {
+      if (numericAmount === 0 || amountError) {
+        triggerAmountShake(amountShakeAnim);
+        amountInputRef.current?.focus();
+      }
+      return;
+    }
     hapticTap('medium');
     Keyboard.dismiss();
 
@@ -1572,69 +1590,77 @@ export default function SendMoneyScreen({ navigation }) {
 
         <Text style={[styles.label, { marginTop: 28 }]}>Montant</Text>
 
-        <TouchableOpacity
-          style={[
-            styles.amountWrapper,
-            amountFocused && styles.amountWrapperFocused,
-            amountError && styles.amountWrapperError,
-          ]}
-          activeOpacity={0.9}
-          onPress={() => amountInputRef.current?.focus()}
-        >
-          {numericAmount === 0 && !amountFocused && (
-            <View style={styles.keyboardHintRow}>
-              <Text style={styles.keyboardHintIcon}>⌨️</Text>
-              <Text style={styles.keyboardHintLabel}>Touchez pour saisir</Text>
-            </View>
-          )}
+        <Animated.View style={{ transform: [{ translateX: amountShakeAnim }] }}>
+          <TouchableOpacity
+            style={[
+              styles.amountWrapper,
+              amountFocused && styles.amountWrapperFocused,
+              amountError && styles.amountWrapperError,
+            ]}
+            activeOpacity={0.9}
+            onPress={() => amountInputRef.current?.focus()}
+          >
+            {numericAmount === 0 && !amountFocused && (
+              <View style={styles.keyboardHintRow}>
+                <Text style={styles.keyboardHintIcon}>⌨️</Text>
+                <Text style={styles.keyboardHintLabel}>Touchez pour saisir</Text>
+              </View>
+            )}
 
-          {numericAmount === 0 ? (
-            <Text style={styles.amountEmptyState}>Combien ?</Text>
-          ) : (
-            <Animated.Text
-              style={[
-                styles.amountText,
-                amountError && styles.amountTextError,
-                { opacity: amountOpacity },
-              ]}
-              numberOfLines={1}
-              adjustsFontSizeToFit
-            >
-              {displayAmount}
-            </Animated.Text>
-          )}
+            {numericAmount === 0 ? (
+              <Text style={styles.amountEmptyState}>Combien ?</Text>
+            ) : (
+              <Animated.Text
+                style={[
+                  styles.amountText,
+                  amountError && styles.amountTextError,
+                  {
+                    opacity: amountOpacity,
+                    transform: [{ scale: amountScale }],
+                  },
+                ]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+              >
+                {displayAmount}
+              </Animated.Text>
+            )}
 
-          <Text style={styles.amountCurrency}>FCFA</Text>
+            <Text style={styles.amountCurrency}>FCFA</Text>
 
-          {amountFocused && numericAmount === 0 && (
-            <Animated.View style={[styles.customCaret, { opacity: caretOpacity }]} />
-          )}
+            {amountFocused && numericAmount === 0 && (
+              <Animated.View style={[styles.customCaret, { opacity: caretOpacity }]} />
+            )}
 
-          <TextInput
-            ref={amountInputRef}
-            style={styles.amountHiddenInput}
-            value={amount}
-            onChangeText={(v) => {
-              const digits = v.replace(/[^\d]/g, '');
-              setAmount(digits);
-            }}
-            onFocus={() => setAmountFocused(true)}
-            onBlur={() => setAmountFocused(false)}
-            keyboardType="numeric"
-            maxLength={9}
-            caretHidden={true}
-            showSoftInputOnFocus={true}
-            selectionColor={COLORS.primary}
-          />
-        </TouchableOpacity>
+            <TextInput
+              ref={amountInputRef}
+              style={styles.amountHiddenInput}
+              value={amount}
+              onChangeText={(v) => {
+                const digits = v.replace(/[^\d]/g, '');
+                setAmount(digits);
+                triggerAmountPop(amountScale);
+              }}
+              onFocus={() => setAmountFocused(true)}
+              onBlur={() => setAmountFocused(false)}
+              keyboardType="numeric"
+              maxLength={9}
+              caretHidden={true}
+              showSoftInputOnFocus={true}
+              selectionColor={COLORS.primary}
+            />
+          </TouchableOpacity>
+        </Animated.View>
 
         {amountError && (
           <View style={styles.amountErrorRow}>
-            <Text style={styles.amountErrorText}>⚠️ {amountError}</Text>
+            <View style={styles.amountErrorBadge}>
+              <Text style={styles.amountErrorText}>⚠️ {amountError}</Text>
+            </View>
           </View>
         )}
 
-        {selectedContact && recentSuggestions.length > 0 && !amountError && (
+        {selectedContact && recentSuggestions.length > 0 && !amountError ? (
           <View style={styles.recentAmountsRow}>
             <Text style={styles.recentAmountsLabel}>Déjà envoyé</Text>
             <View style={styles.recentAmountsChips}>
@@ -1646,7 +1672,8 @@ export default function SendMoneyScreen({ navigation }) {
                     numericAmount === v && styles.recentAmountChipActive,
                   ]}
                   onPress={() => {
-                    hapticTap('light');
+                    triggerSelectionHaptic();
+                    triggerAmountPop(amountScale);
                     setAmount(String(v));
                   }}
                   activeOpacity={0.75}
@@ -1663,6 +1690,64 @@ export default function SendMoneyScreen({ navigation }) {
               ))}
             </View>
           </View>
+        ) : (
+          !amountError && balance > 0 && (
+            <View style={styles.recentAmountsRow}>
+              <Text style={styles.recentAmountsLabel}>Montants rapides</Text>
+              <View style={styles.recentAmountsChips}>
+                {[1000, 2000, 5000, 10000].map((v) => (
+                  <TouchableOpacity
+                    key={`quick-${v}`}
+                    style={[
+                      styles.recentAmountChip,
+                      numericAmount === v && styles.recentAmountChipActive,
+                    ]}
+                    onPress={() => {
+                      triggerSelectionHaptic();
+                      triggerAmountPop(amountScale);
+                      setAmount(String(v));
+                      if (v > balance) {
+                        triggerAmountShake(amountShakeAnim);
+                      }
+                    }}
+                    activeOpacity={0.75}
+                  >
+                    <Text
+                      style={[
+                        styles.recentAmountChipText,
+                        numericAmount === v && styles.recentAmountChipTextActive,
+                      ]}
+                    >
+                      +{v.toLocaleString('fr-FR')}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+                {balance >= 100 && (
+                  <TouchableOpacity
+                    style={[
+                      styles.recentAmountChip,
+                      numericAmount === balance && styles.recentAmountChipActive,
+                    ]}
+                    onPress={() => {
+                      triggerSelectionHaptic();
+                      triggerAmountPop(amountScale);
+                      setAmount(String(balance));
+                    }}
+                    activeOpacity={0.75}
+                  >
+                    <Text
+                      style={[
+                        styles.recentAmountChipText,
+                        numericAmount === balance && styles.recentAmountChipTextActive,
+                      ]}
+                    >
+                      Max
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+          )
         )}
 
         {!amountError && (
@@ -2458,8 +2543,18 @@ const styles = StyleSheet.create({
   },
   amountErrorRow: {
     alignItems: 'center',
-    marginTop: 8,
+    marginTop: 10,
     marginBottom: 4,
+  },
+  amountErrorBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFEBEE',
+    borderWidth: 1,
+    borderColor: '#FFCDD2',
+    paddingHorizontal: 14,
+    paddingVertical: 5,
+    borderRadius: 20,
   },
   amountErrorText: {
     fontSize: 12.5,

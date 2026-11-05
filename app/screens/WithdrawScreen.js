@@ -40,6 +40,8 @@ import { useTransactions } from '../context/TransactionContext';
 import { saveTxMetadata } from '../utils/txRefCache';
 import VoiceAssistantButton from '../components/VoiceAssistantButton';
 import SuccessCheckmarkOverlay from '../components/SuccessCheckmarkOverlay';
+import { triggerAmountShake, triggerAmountPop, getAmountErrorMessage } from '../utils/amountEffects';
+import { triggerSelectionHaptic } from '../utils/haptics';
 import {
   verifyTransactionAuth,
   AUTH_METHOD,
@@ -277,13 +279,23 @@ export default function WithdrawScreen({ navigation }) {
   }, [numericAmount]);
 
   const amountError = useMemo(() => {
-    if (numericAmount === 0) return null;
-    if (numericAmount < 100) return 'Minimum 100 FCFA';
-    if (numericAmount > balance) return 'Solde insuffisant';
-    return null;
+    return getAmountErrorMessage(numericAmount, balance, 100);
   }, [numericAmount, balance]);
 
-  // Animation du montant
+  // Animation du montant (Shake & Scale Pop)
+  const amountScale = useRef(new Animated.Value(1)).current;
+  const amountShakeAnim = useRef(new Animated.Value(0)).current;
+
+  // Détection du dépassement de solde pour déclencher le shake
+  const prevExceeded = useRef(false);
+  useEffect(() => {
+    const isExceeded = numericAmount > balance;
+    if (isExceeded && !prevExceeded.current) {
+      triggerAmountShake(amountShakeAnim);
+    }
+    prevExceeded.current = isExceeded;
+  }, [numericAmount, balance]);
+
   useEffect(() => {
     Animated.sequence([
       Animated.timing(amountOpacity, { toValue: 0.6, duration: 90, useNativeDriver: true }),
@@ -731,7 +743,13 @@ ${details.feesIncluded ? '✅ Frais inclus' : '❌ Hors frais'}
   })();
 
   const handleConfirm = () => {
-    if (!canWithdraw) return;
+    if (!canWithdraw) {
+      if (numericAmount === 0 || amountError) {
+        triggerAmountShake(amountShakeAnim);
+        amountInputRef.current?.focus();
+      }
+      return;
+    }
     hapticTap('medium');
     Keyboard.dismiss();
 
@@ -946,66 +964,132 @@ ${details.feesIncluded ? '✅ Frais inclus' : '❌ Hors frais'}
 
         <Text style={[styles.label, { marginTop: 40 }]}>Montant</Text>
 
-        <TouchableOpacity
-          style={[
-            styles.amountWrapper,
-            amountFocused && styles.amountWrapperFocused,
-            amountError && styles.amountWrapperError,
-          ]}
-          activeOpacity={0.9}
-          onPress={() => amountInputRef.current?.focus()}
-        >
-          {numericAmount === 0 && !amountFocused && (
-            <View style={styles.keyboardHintRow}>
-              <Text style={styles.keyboardHintIcon}>⌨️</Text>
-              <Text style={styles.keyboardHintLabel}>Touchez pour saisir</Text>
-            </View>
-          )}
+        <Animated.View style={{ transform: [{ translateX: amountShakeAnim }] }}>
+          <TouchableOpacity
+            style={[
+              styles.amountWrapper,
+              amountFocused && styles.amountWrapperFocused,
+              amountError && styles.amountWrapperError,
+            ]}
+            activeOpacity={0.9}
+            onPress={() => amountInputRef.current?.focus()}
+          >
+            {numericAmount === 0 && !amountFocused && (
+              <View style={styles.keyboardHintRow}>
+                <Text style={styles.keyboardHintIcon}>⌨️</Text>
+                <Text style={styles.keyboardHintLabel}>Touchez pour saisir</Text>
+              </View>
+            )}
 
-          {numericAmount === 0 ? (
-            <Text style={styles.amountEmptyState}>Combien ?</Text>
-          ) : (
-            <Animated.Text
-              style={[
-                styles.amountText,
-                amountError && styles.amountTextError,
-                { opacity: amountOpacity },
-              ]}
-              numberOfLines={1}
-              adjustsFontSizeToFit
-            >
-              {displayAmount}
-            </Animated.Text>
-          )}
+            {numericAmount === 0 ? (
+              <Text style={styles.amountEmptyState}>Combien ?</Text>
+            ) : (
+              <Animated.Text
+                style={[
+                  styles.amountText,
+                  amountError && styles.amountTextError,
+                  {
+                    opacity: amountOpacity,
+                    transform: [{ scale: amountScale }],
+                  },
+                ]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+              >
+                {displayAmount}
+              </Animated.Text>
+            )}
 
-          <Text style={styles.amountCurrency}>FCFA</Text>
+            <Text style={styles.amountCurrency}>FCFA</Text>
 
-          {amountFocused && numericAmount === 0 && (
-            <Animated.View style={[styles.customCaret, { opacity: caretOpacity }]} />
-          )}
+            {amountFocused && numericAmount === 0 && (
+              <Animated.View style={[styles.customCaret, { opacity: caretOpacity }]} />
+            )}
 
-          <TextInput
-            ref={amountInputRef}
-            style={styles.amountHiddenInput}
-            value={amount}
-            onChangeText={(v) => {
-              const digits = v.replace(/[^\d]/g, '');
-              setAmount(digits);
-            }}
-            onFocus={() => setAmountFocused(true)}
-            onBlur={() => setAmountFocused(false)}
-            keyboardType="numeric"
-            maxLength={9}
-            caretHidden={true}
-            editable={!isWithdrawing}
-            showSoftInputOnFocus={true}
-            selectionColor={COLORS.primary}
-          />
-        </TouchableOpacity>
+            <TextInput
+              ref={amountInputRef}
+              style={styles.amountHiddenInput}
+              value={amount}
+              onChangeText={(v) => {
+                const digits = v.replace(/[^\d]/g, '');
+                setAmount(digits);
+                triggerAmountPop(amountScale);
+              }}
+              onFocus={() => setAmountFocused(true)}
+              onBlur={() => setAmountFocused(false)}
+              keyboardType="numeric"
+              maxLength={9}
+              caretHidden={true}
+              editable={!isWithdrawing}
+              showSoftInputOnFocus={true}
+              selectionColor={COLORS.primary}
+            />
+          </TouchableOpacity>
+        </Animated.View>
 
         {amountError && (
           <View style={styles.amountErrorRow}>
-            <Text style={styles.amountErrorText}>⚠️ {amountError}</Text>
+            <View style={styles.amountErrorBadge}>
+              <Text style={styles.amountErrorText}>⚠️ {amountError}</Text>
+            </View>
+          </View>
+        )}
+
+        {!amountError && balance > 0 && (
+          <View style={styles.recentAmountsRow}>
+            <Text style={styles.recentAmountsLabel}>Montants rapides</Text>
+            <View style={styles.recentAmountsChips}>
+              {[2000, 5000, 10000, 25000].map((v) => (
+                <TouchableOpacity
+                  key={`quick-${v}`}
+                  style={[
+                    styles.recentAmountChip,
+                    numericAmount === v && styles.recentAmountChipActive,
+                  ]}
+                  onPress={() => {
+                    triggerSelectionHaptic();
+                    triggerAmountPop(amountScale);
+                    setAmount(String(v));
+                    if (v > balance) {
+                      triggerAmountShake(amountShakeAnim);
+                    }
+                  }}
+                  activeOpacity={0.75}
+                >
+                  <Text
+                    style={[
+                      styles.recentAmountChipText,
+                      numericAmount === v && styles.recentAmountChipTextActive,
+                    ]}
+                  >
+                    +{v.toLocaleString('fr-FR')}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+              {balance >= 100 && (
+                <TouchableOpacity
+                  style={[
+                    styles.recentAmountChip,
+                    numericAmount === balance && styles.recentAmountChipActive,
+                  ]}
+                  onPress={() => {
+                    triggerSelectionHaptic();
+                    triggerAmountPop(amountScale);
+                    setAmount(String(balance));
+                  }}
+                  activeOpacity={0.75}
+                >
+                  <Text
+                    style={[
+                      styles.recentAmountChipText,
+                      numericAmount === balance && styles.recentAmountChipTextActive,
+                    ]}
+                  >
+                    Max
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
           </View>
         )}
 
@@ -1813,13 +1897,60 @@ const styles = StyleSheet.create({
   },
   amountErrorRow: {
     alignItems: 'center',
-    marginTop: 8,
+    marginTop: 10,
     marginBottom: 4,
+  },
+  amountErrorBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFEBEE',
+    borderWidth: 1,
+    borderColor: '#FFCDD2',
+    paddingHorizontal: 14,
+    paddingVertical: 5,
+    borderRadius: 20,
   },
   amountErrorText: {
     fontSize: 12.5,
     color: COLORS.danger,
     fontWeight: '700',
+  },
+  recentAmountsRow: {
+    marginTop: 14,
+    marginBottom: 6,
+  },
+  recentAmountsLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: COLORS.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginBottom: 8,
+  },
+  recentAmountsChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  recentAmountChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 12,
+    backgroundColor: COLORS.surfaceAlt,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  recentAmountChipActive: {
+    backgroundColor: COLORS.primarySoft,
+    borderColor: COLORS.primary,
+  },
+  recentAmountChipText: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+  },
+  recentAmountChipTextActive: {
+    color: COLORS.primary,
   },
   balanceHint: {
     fontSize: 11.5,

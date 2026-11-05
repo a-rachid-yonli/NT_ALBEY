@@ -41,7 +41,8 @@ import { pickPhoneContact } from '../utils/contactPicker';
 import RecentNumbersBar, { saveRecentNumber } from '../components/RecentNumbersBar';
 import VoiceAssistantButton from '../components/VoiceAssistantButton';
 import SuccessCheckmarkOverlay from '../components/SuccessCheckmarkOverlay';
-import { triggerSuccessHaptic } from '../utils/haptics';
+import { triggerAmountShake, triggerAmountPop, getAmountErrorMessage } from '../utils/amountEffects';
+import { triggerSuccessHaptic, triggerSelectionHaptic } from '../utils/haptics';
 import {
   verifyTransactionAuth,
   AUTH_METHOD,
@@ -391,6 +392,8 @@ export default function ShopScreen({ navigation }) {
 
   const amountOpacity = useRef(new Animated.Value(1)).current;
   const caretOpacity = useRef(new Animated.Value(1)).current;
+  const amountScale = useRef(new Animated.Value(1)).current;
+  const amountShakeAnim = useRef(new Animated.Value(0)).current;
 
   /* ─── BLR ────────────────────────────────────────────────────────── */
   const [blrNumber, setBlrNumber]   = useState('');
@@ -419,7 +422,7 @@ export default function ShopScreen({ navigation }) {
   const sheetTranslateY = useRef(new Animated.Value(0)).current;
 
   /* ─── Hooks context ──────────────────────────────────────────────── */
-  const { refreshWallet, refreshData } = useTransactions();
+  const { balance = 0, refreshWallet, refreshData } = useTransactions();
 
   /* ─── Gestion propre des timers de refresh ───────────────────────── */
   const refreshTimerRef = useRef(null);
@@ -1299,63 +1302,96 @@ export default function ShopScreen({ navigation }) {
     inputRef,
     placeholder = 'Combien ?',
     maxLength = 9,
+    minAmount = 100,
   }) => {
     const numeric = parseInt(String(value || '0').replace(/\D/g, ''), 10) || 0;
     const display = numeric > 0 ? numeric.toLocaleString('fr-FR') : '0';
     const isFocused = amountFocused;
+    const err = getAmountErrorMessage(numeric, balance, minAmount);
 
     return (
-      <TouchableOpacity
-        style={[
-          styles.amountWrapper,
-          isFocused && styles.amountWrapperFocused,
-        ]}
-        activeOpacity={0.9}
-        onPress={() => inputRef.current?.focus()}
-      >
-        {numeric === 0 && !isFocused && (
-          <View style={styles.keyboardHintRow}>
-            <Text style={styles.keyboardHintIcon}>⌨️</Text>
-            <Text style={styles.keyboardHintLabel}>Touchez pour saisir</Text>
+      <View>
+        <Animated.View style={{ transform: [{ translateX: amountShakeAnim }] }}>
+          <TouchableOpacity
+            style={[
+              styles.amountWrapper,
+              isFocused && styles.amountWrapperFocused,
+              err && styles.amountWrapperError,
+            ]}
+            activeOpacity={0.9}
+            onPress={() => inputRef.current?.focus()}
+          >
+            {numeric === 0 && !isFocused && (
+              <View style={styles.keyboardHintRow}>
+                <Text style={styles.keyboardHintIcon}>⌨️</Text>
+                <Text style={styles.keyboardHintLabel}>Touchez pour saisir</Text>
+              </View>
+            )}
+
+            {numeric === 0 ? (
+              <Text style={styles.amountEmptyState}>{placeholder}</Text>
+            ) : (
+              <Animated.Text
+                style={[
+                  styles.amountText,
+                  err && styles.amountTextError,
+                  {
+                    opacity: amountOpacity,
+                    transform: [{ scale: amountScale }],
+                  },
+                ]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+              >
+                {display}
+              </Animated.Text>
+            )}
+
+            <Text style={styles.amountCurrency}>FCFA</Text>
+
+            {isFocused && numeric === 0 && (
+              <Animated.View style={[styles.customCaret, { opacity: caretOpacity }]} />
+            )}
+
+            <TextInput
+              ref={inputRef}
+              style={styles.amountHiddenInput}
+              value={value}
+              onChangeText={(v) => {
+                const digits = v.replace(/[^\d]/g, '');
+                onChange(digits);
+                triggerAmountPop(amountScale);
+                const n = parseInt(digits, 10) || 0;
+                if (n > balance) {
+                  triggerAmountShake(amountShakeAnim);
+                }
+              }}
+              onFocus={() => setAmountFocused(true)}
+              onBlur={() => setAmountFocused(false)}
+              keyboardType="numeric"
+              maxLength={maxLength}
+              caretHidden={true}
+              editable={!isProcessing}
+              showSoftInputOnFocus={true}
+              selectionColor={COLORS.primary}
+            />
+          </TouchableOpacity>
+        </Animated.View>
+
+        {err && (
+          <View style={styles.amountErrorRow}>
+            <View style={styles.amountErrorBadge}>
+              <Text style={styles.amountErrorText}>⚠️ {err}</Text>
+            </View>
           </View>
         )}
 
-        {numeric === 0 ? (
-          <Text style={styles.amountEmptyState}>{placeholder}</Text>
-        ) : (
-          <Animated.Text
-            style={[styles.amountText, { opacity: amountOpacity }]}
-            numberOfLines={1}
-            adjustsFontSizeToFit
-          >
-            {display}
-          </Animated.Text>
+        {!err && balance > 0 && (
+          <Text style={styles.balanceHint}>
+            Solde disponible · {balance.toLocaleString('fr-FR')} FCFA
+          </Text>
         )}
-
-        <Text style={styles.amountCurrency}>FCFA</Text>
-
-        {isFocused && numeric === 0 && (
-          <Animated.View style={[styles.customCaret, { opacity: caretOpacity }]} />
-        )}
-
-        <TextInput
-          ref={inputRef}
-          style={styles.amountHiddenInput}
-          value={value}
-          onChangeText={(v) => {
-            const digits = v.replace(/[^\d]/g, '');
-            onChange(digits);
-          }}
-          onFocus={() => setAmountFocused(true)}
-          onBlur={() => setAmountFocused(false)}
-          keyboardType="numeric"
-          maxLength={maxLength}
-          caretHidden={true}
-          editable={!isProcessing}
-          showSoftInputOnFocus={true}
-          selectionColor={COLORS.primary}
-        />
-      </TouchableOpacity>
+      </View>
     );
   };
 
@@ -1483,8 +1519,12 @@ export default function ShopScreen({ navigation }) {
                   key={sug}
                   style={[styles.suggestionChip, stockAmount === sug && styles.suggestionChipActive]}
                   onPress={() => {
-                    hapticTap('light');
+                    triggerSelectionHaptic();
+                    triggerAmountPop(amountScale);
                     setStockAmount(sug);
+                    if (parseInt(sug, 10) > balance) {
+                      triggerAmountShake(amountShakeAnim);
+                    }
                   }}
                   activeOpacity={0.75}
                 >
@@ -1583,8 +1623,12 @@ export default function ShopScreen({ navigation }) {
                   key={sug}
                   style={[styles.suggestionChip, airtimeAmount === sug && styles.suggestionChipActive]}
                   onPress={() => {
-                    hapticTap('light');
+                    triggerSelectionHaptic();
+                    triggerAmountPop(amountScale);
                     setAirtimeAmount(sug);
+                    if (parseInt(sug, 10) > balance) {
+                      triggerAmountShake(amountShakeAnim);
+                    }
                   }}
                   activeOpacity={0.75}
                 >
@@ -1653,8 +1697,12 @@ export default function ShopScreen({ navigation }) {
                   key={sug}
                   style={[styles.suggestionChip, softphoneAmount === sug && styles.suggestionChipActive]}
                   onPress={() => {
-                    hapticTap('light');
+                    triggerSelectionHaptic();
+                    triggerAmountPop(amountScale);
                     setSoftphoneAmount(sug);
+                    if (parseInt(sug, 10) > balance) {
+                      triggerAmountShake(amountShakeAnim);
+                    }
                   }}
                   activeOpacity={0.75}
                 >
@@ -1792,8 +1840,16 @@ export default function ShopScreen({ navigation }) {
         <View style={[styles.ctaContainer, { paddingBottom: Math.max(insets.bottom, 14) + 12 }]}>
           <TouchableOpacity
             style={[styles.cta, !isCategoryCtaReady() && styles.ctaDisabled]}
-            onPress={handleCategoryCta}
-            disabled={!isCategoryCtaReady()}
+            onPress={() => {
+              if (!isCategoryCtaReady()) {
+                const amt = getVoiceAmount();
+                if (amt === 0 || amt > balance) {
+                  triggerAmountShake(amountShakeAnim);
+                }
+              } else {
+                handleCategoryCta();
+              }
+            }}
             activeOpacity={0.85}
           >
             {isProcessing || isVerifyingAuth ? (
@@ -2237,6 +2293,11 @@ const styles = StyleSheet.create({
     borderStyle: 'solid',
     backgroundColor: COLORS.primarySoft,
   },
+  amountWrapperError: {
+    borderColor: COLORS.danger,
+    borderStyle: 'solid',
+    backgroundColor: COLORS.dangerSoft,
+  },
   amountText: {
     fontSize: 68,
     fontWeight: '800',
@@ -2245,6 +2306,36 @@ const styles = StyleSheet.create({
     lineHeight: 76,
     textAlign: 'center',
     includeFontPadding: false,
+  },
+  amountTextError: {
+    color: COLORS.danger,
+  },
+  amountErrorRow: {
+    alignItems: 'center',
+    marginTop: 10,
+    marginBottom: 4,
+  },
+  amountErrorBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFEBEE',
+    borderWidth: 1,
+    borderColor: '#FFCDD2',
+    paddingHorizontal: 14,
+    paddingVertical: 5,
+    borderRadius: 20,
+  },
+  amountErrorText: {
+    fontSize: 12.5,
+    color: COLORS.danger,
+    fontWeight: '700',
+  },
+  balanceHint: {
+    fontSize: 11.5,
+    color: COLORS.textMuted,
+    fontWeight: '500',
+    textAlign: 'center',
+    marginTop: 10,
   },
   amountEmptyState: {
     fontSize: 34,
