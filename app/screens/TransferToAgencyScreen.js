@@ -1174,7 +1174,7 @@ ${details.feesIncluded ? '✅ Frais inclus' : '❌ Hors frais'}
           )}
         </TouchableOpacity>
 
-        {(numericAmount >= 100 || canSend) && (
+        {canSend && (
           <VoiceAssistantButton
             type="transfer_agency"
             amount={numericAmount}
