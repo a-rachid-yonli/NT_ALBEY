@@ -991,6 +991,11 @@ export default function SendMoneyScreen({ navigation }) {
     const receiverPhone = String(selectedContact.phone).replace(/\s/g, '').replace(/^\+?227/, '');
     const amountValue = parsed.value;
 
+    if (currentUserPhone && receiverPhone === String(currentUserPhone).replace(/\s/g, '').replace(/^\+?227/, '')) {
+      showToast('error', 'Opération impossible', 'Vous ne pouvez pas vous transférer de l\'argent à vous-même. Pour un retrait, utilisez « Envoi à moi-même ».');
+      return;
+    }
+
     setIsSending(true);
 
     try {
