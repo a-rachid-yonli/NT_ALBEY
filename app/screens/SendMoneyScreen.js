@@ -46,6 +46,7 @@ import { isDeviceCompromised, guardSensitiveOperation } from '../utils/security'
 
 const NOTIFIED_TX_IDS_KEY = '@ntalbey_notified_tx_ids';
 const RECENT_AMOUNTS_KEY = '@ntalbey_recent_amounts_by_phone';
+const SAVED_BENEFICIARIES_KEY = '@ntalbey_saved_beneficiaries_v1';
 
 // ═══════════════════════════════════════════════════════════════
 // 🎨 PALETTE
@@ -216,8 +217,8 @@ const IconContact = ({ color = COLORS.primary, size = 22 }) => (
   </Svg>
 );
 
-const IconStar = ({ filled, color = '#FFD700' }) => (
-  <Svg width="12" height="12" viewBox="0 0 24 24" fill={filled ? color : 'none'} stroke={color} strokeWidth="2">
+const IconStar = ({ filled, color = '#FFD700', size = 14 }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill={filled ? color : 'none'} stroke={color} strokeWidth="2">
     <Path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
   </Svg>
 );
@@ -531,21 +532,160 @@ export default function SendMoneyScreen({ navigation }) {
     checkBiometrics();
   }, []);
 
-  useEffect(() => {
-    const loadContacts = async () => {
+  // ─── Chargement fusionné des contacts, favoris et transactions ───
+  const loadAllContactsAndBeneficiaries = useCallback(async () => {
+    setIsLoadingContacts(true);
+    try {
+      const map = new Map();
+
+      // 1. Favoris et bénéficiaires enregistrés localement
       try {
-        const data = await API.getContacts();
-        const unique = Array.isArray(data)
-          ? data.filter((c, i, arr) => arr.findIndex(x => x.id === c.id) === i)
-          : [];
-        setContacts(unique);
-      } catch (error) {
-        showToast('error', 'Erreur', 'Impossible de charger vos contacts.');
-      } finally {
-        setIsLoadingContacts(false);
+        const raw = await AsyncStorage.getItem(SAVED_BENEFICIARIES_KEY);
+        const savedList = raw ? JSON.parse(raw) : [];
+        if (Array.isArray(savedList)) {
+          for (const item of savedList) {
+            const clean = String(item.phone || '').replace(/\D/g, '').replace(/^227/, '');
+            if (clean.length === 8) {
+              map.set(clean, {
+                id: item.id || `fav-${clean}`,
+                name: item.name || `+227 ${clean}`,
+                phone: clean,
+                avatar: item.avatar || buildInitials(item.name || clean),
+                color: item.color || pickRandomContactColor(),
+                isFavorite: item.isFavorite !== undefined ? item.isFavorite : true,
+                lastSentAt: item.lastSentAt || 0,
+                isFromQR: false,
+              });
+            }
+          }
+        }
+      } catch (_) {}
+
+      // 2. Historique des transactions pour remplir automatiquement les bénéficiaires
+      if (Array.isArray(transactions) && transactions.length > 0) {
+        for (const tx of transactions) {
+          const candPhone = tx?.recipient_phone || tx?.beneficiary_phone || tx?.to_phone || tx?.phone || '';
+          const clean = String(candPhone).replace(/\D/g, '').replace(/^227/, '');
+          if (clean.length === 8) {
+            const candName = tx?.recipient_name || tx?.beneficiary_name || tx?.to_name || '';
+            const txTime = tx?.timestamp || tx?.created_at ? new Date(tx.timestamp || tx.created_at).getTime() : 0;
+            if (!map.has(clean)) {
+              map.set(clean, {
+                id: `tx-${clean}`,
+                name: candName || `+227 ${clean}`,
+                phone: clean,
+                avatar: buildInitials(candName || clean),
+                color: pickRandomContactColor(),
+                isFavorite: true,
+                lastSentAt: txTime,
+                isFromQR: false,
+              });
+            } else {
+              const existing = map.get(clean);
+              if (candName && (!existing.name || existing.name.startsWith('+227'))) {
+                existing.name = candName;
+                existing.avatar = buildInitials(candName);
+              }
+              if (txTime > (existing.lastSentAt || 0)) {
+                existing.lastSentAt = txTime;
+              }
+            }
+          }
+        }
       }
-    };
-    loadContacts();
+
+      // 3. Contacts API si disponibles
+      try {
+        const apiData = await API.getContacts();
+        if (Array.isArray(apiData)) {
+          for (const c of apiData) {
+            const clean = String(c.phone || '').replace(/\D/g, '').replace(/^227/, '');
+            if (clean.length === 8 && !map.has(clean)) {
+              map.set(clean, {
+                id: c.id || `api-${clean}`,
+                name: c.name || `+227 ${clean}`,
+                phone: clean,
+                avatar: c.avatar || buildInitials(c.name || clean),
+                color: c.color || pickRandomContactColor(),
+                isFavorite: !!c.isFavorite,
+                lastSentAt: 0,
+                isFromQR: false,
+              });
+            }
+          }
+        }
+      } catch (_) {}
+
+      const merged = Array.from(map.values());
+      setContacts(merged);
+      await AsyncStorage.setItem(SAVED_BENEFICIARIES_KEY, JSON.stringify(merged));
+    } catch (error) {
+      if (__DEV__) console.log('Erreur chargement contacts', error);
+    } finally {
+      setIsLoadingContacts(false);
+    }
+  }, [transactions]);
+
+  useEffect(() => {
+    loadAllContactsAndBeneficiaries();
+  }, [loadAllContactsAndBeneficiaries]);
+
+  // ⭐ Enregistrement automatique d'un bénéficiaire comme favori dès qu'un envoi est fait
+  const saveBeneficiaryOnSend = useCallback(async (phone, name) => {
+    try {
+      const clean = String(phone || '').replace(/\D/g, '').replace(/^227/, '');
+      if (clean.length !== 8) return;
+      const raw = await AsyncStorage.getItem(SAVED_BENEFICIARIES_KEY);
+      let list = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(list)) list = [];
+
+      const existingIndex = list.findIndex((c) => String(c.phone).replace(/\D/g, '').endsWith(clean));
+      const displayName = name && !name.startsWith('+227')
+        ? name
+        : (existingIndex >= 0 && list[existingIndex].name ? list[existingIndex].name : `+227 ${clean}`);
+
+      const updatedContact = {
+        id: existingIndex >= 0 ? list[existingIndex].id : `fav-${clean}`,
+        name: displayName,
+        phone: clean,
+        avatar: buildInitials(displayName),
+        color: existingIndex >= 0 && list[existingIndex].color ? list[existingIndex].color : pickRandomContactColor(),
+        isFavorite: true, // ⭐ Enregistré en favori automatiquement
+        lastSentAt: Date.now(),
+        isFromQR: false,
+      };
+
+      if (existingIndex >= 0) {
+        list[existingIndex] = { ...list[existingIndex], ...updatedContact };
+      } else {
+        list.unshift(updatedContact);
+      }
+
+      await AsyncStorage.setItem(SAVED_BENEFICIARIES_KEY, JSON.stringify(list));
+      setContacts((prev) => {
+        const filtered = prev.filter((c) => String(c.phone).replace(/\D/g, '').slice(-8) !== clean);
+        return [updatedContact, ...filtered];
+      });
+      await saveRecentNumber(clean, displayName);
+    } catch (_) {}
+  }, []);
+
+  // ⭐ Bascule favori (marquer/démarquer) en 1 tap
+  const toggleFavorite = useCallback(async (contactPhone) => {
+    try {
+      const clean = String(contactPhone).replace(/\D/g, '').replace(/^227/, '');
+      hapticTap('light');
+      setContacts((prev) => {
+        const next = prev.map((c) => {
+          if (String(c.phone).replace(/\D/g, '').endsWith(clean)) {
+            return { ...c, isFavorite: !c.isFavorite };
+          }
+          return c;
+        });
+        AsyncStorage.setItem(SAVED_BENEFICIARIES_KEY, JSON.stringify(next)).catch(() => {});
+        return next;
+      });
+    } catch (_) {}
   }, []);
 
   // Charge les montants récents
@@ -1037,6 +1177,7 @@ export default function SendMoneyScreen({ navigation }) {
       });
 
       await saveRecentAmount(receiverPhone, amountValue);
+      await saveBeneficiaryOnSend(receiverPhone, selectedContact.name);
 
       if (result.id) {
         try {
@@ -1254,13 +1395,20 @@ export default function SendMoneyScreen({ navigation }) {
   // FILTRAGE
   // ═════════════════════════════════════════════════════════
   const filteredContacts = useMemo(() => {
-    const sorted = [...contacts].sort((a, b) => (b.isFavorite ? 1 : 0) - (a.isFavorite ? 1 : 0));
+    const sorted = [...contacts].sort((a, b) => {
+      if (b.isFavorite !== a.isFavorite) {
+        return (b.isFavorite ? 1 : 0) - (a.isFavorite ? 1 : 0);
+      }
+      return (b.lastSentAt || 0) - (a.lastSentAt || 0);
+    });
     if (!pickerSearch.trim()) return sorted;
     const q = pickerSearch.toLowerCase().trim();
-    return sorted.filter(c =>
-      String(c.name || '').toLowerCase().includes(q) ||
-      String(c.phone || '').includes(q)
-    );
+    const cleanQ = q.replace(/\D/g, '');
+    return sorted.filter(c => {
+      const matchName = String(c.name || '').toLowerCase().includes(q);
+      const matchPhone = String(c.phone || '').includes(q) || (cleanQ.length >= 2 && String(c.phone || '').replace(/\D/g, '').includes(cleanQ));
+      return matchName || matchPhone;
+    });
   }, [contacts, pickerSearch]);
 
   const recentSuggestions = useMemo(() => {
@@ -1751,27 +1899,44 @@ export default function SendMoneyScreen({ navigation }) {
 
             <TextInput
               style={styles.contactSearchInput}
-              placeholder="Rechercher dans mes contacts…"
+              placeholder="Rechercher dans mes contacts ou favoris…"
               placeholderTextColor={COLORS.textMuted}
               value={pickerSearch}
               onChangeText={setPickerSearch}
               autoCorrect={false}
             />
 
+            <View style={styles.sheetSectionHeader}>
+              <Text style={styles.sheetSectionTitle}>
+                {pickerSearch
+                  ? `Résultats de recherche (${filteredContacts.length})`
+                  : `⭐ Bénéficiaires favoris (${filteredContacts.length})`}
+              </Text>
+              {!pickerSearch && filteredContacts.length > 0 && (
+                <Text style={styles.sheetSectionSubtitle}>Envoi rapide en 1-clic</Text>
+              )}
+            </View>
+
             <ScrollView
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
-              contentContainerStyle={{ paddingBottom: 20 }}
+              contentContainerStyle={{ paddingBottom: 24 }}
             >
               {isLoadingContacts ? (
                 <View style={styles.sheetLoading}>
                   <ActivityIndicator size="large" color={COLORS.primary} />
+                  <Text style={styles.sheetLoadingText}>Chargement de vos bénéficiaires…</Text>
                 </View>
               ) : filteredContacts.length === 0 ? (
                 <View style={styles.sheetEmpty}>
-                  <Text style={styles.sheetEmptyEmoji}>👥</Text>
+                  <Text style={styles.sheetEmptyEmoji}>⭐</Text>
                   <Text style={styles.sheetEmptyTitle}>
-                    {pickerSearch ? 'Aucun contact trouvé' : 'Aucun contact'}
+                    {pickerSearch ? 'Aucun contact correspondant' : 'Aucun bénéficiaire enregistré'}
+                  </Text>
+                  <Text style={styles.sheetEmptySubtitle}>
+                    {pickerSearch
+                      ? `Aucun contact ne correspond à « ${pickerSearch} ». Vous pouvez saisir le numéro ci-dessus.`
+                      : 'Dès que vous envoyez de l\'argent à un destinataire, il est automatiquement enregistré ici comme favori.'}
                   </Text>
                 </View>
               ) : (
@@ -1792,11 +1957,6 @@ export default function SendMoneyScreen({ navigation }) {
                         <Text style={styles.contactRowName} numberOfLines={1}>
                           {contact.name}
                         </Text>
-                        {contact.isFavorite && (
-                          <View style={styles.contactRowStar}>
-                            <IconStar filled={true} />
-                          </View>
-                        )}
                       </View>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
                         <Text style={styles.contactRowPhone}>+227 {contact.phone}</Text>
@@ -1812,6 +1972,17 @@ export default function SendMoneyScreen({ navigation }) {
                         })()}
                       </View>
                     </View>
+                    <TouchableOpacity
+                      style={styles.contactRowStarBtn}
+                      onPress={(e) => {
+                        e.stopPropagation?.();
+                        toggleFavorite(contact.phone);
+                      }}
+                      hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                      activeOpacity={0.7}
+                    >
+                      <IconStar filled={!!contact.isFavorite} color={contact.isFavorite ? '#F59E0B' : '#CBD5E1'} size={18} />
+                    </TouchableOpacity>
                   </TouchableOpacity>
                 ))
               )}
@@ -2607,13 +2778,46 @@ const styles = StyleSheet.create({
     color: COLORS.textPrimary,
     borderWidth: 1,
     borderColor: COLORS.borderSoft,
-    marginBottom: 12,
+    marginBottom: 10,
+  },
+
+  sheetSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 4,
+    marginBottom: 8,
+    marginTop: 2,
+  },
+  sheetSectionTitle: {
+    fontSize: 12.5,
+    fontWeight: '800',
+    color: COLORS.textPrimary,
+    letterSpacing: 0.1,
+  },
+  sheetSectionSubtitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: COLORS.primary,
   },
 
   sheetLoading: { alignItems: 'center', paddingVertical: 40 },
-  sheetEmpty: { alignItems: 'center', paddingVertical: 40, paddingHorizontal: 20 },
-  sheetEmptyEmoji: { fontSize: 40, marginBottom: 10 },
-  sheetEmptyTitle: { fontSize: 15, fontWeight: '700', color: COLORS.textSecondary },
+  sheetLoadingText: {
+    fontSize: 12.5,
+    color: COLORS.textMuted,
+    marginTop: 10,
+    fontWeight: '500',
+  },
+  sheetEmpty: { alignItems: 'center', paddingVertical: 36, paddingHorizontal: 24 },
+  sheetEmptyEmoji: { fontSize: 36, marginBottom: 8 },
+  sheetEmptyTitle: { fontSize: 14.5, fontWeight: '800', color: COLORS.textPrimary, textAlign: 'center' },
+  sheetEmptySubtitle: {
+    fontSize: 12,
+    color: COLORS.textMuted,
+    textAlign: 'center',
+    marginTop: 6,
+    lineHeight: 18,
+  },
 
   contactRow: {
     flexDirection: 'row',
@@ -2637,6 +2841,11 @@ const styles = StyleSheet.create({
     fontSize: 14.5, fontWeight: '700', color: COLORS.textPrimary, letterSpacing: -0.1,
   },
   contactRowStar: { width: 12, height: 12 },
+  contactRowStarBtn: {
+    padding: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   contactRowPhone: {
     fontSize: 11.5, color: COLORS.textMuted, fontWeight: '500',
   },
