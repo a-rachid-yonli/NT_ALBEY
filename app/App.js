@@ -17,6 +17,7 @@ import { ThemeProvider, useTheme } from './context/ThemeContext';
 import ErrorBoundary from './components/ErrorBoundary';
 import { AppLockProvider } from './context/AppLockContext';
 import AppLockOverlay from './components/AppLockOverlay';
+import PrivacyShieldOverlay from './components/PrivacyShieldOverlay';
 import { ToastProvider } from './context/ToastContext';
 import ToastOverlay from './components/ToastOverlay';
 import PremiumAlertOverlay from './components/PremiumAlertOverlay';
@@ -117,6 +118,7 @@ export default function App() {
                   <UltraLiteProvider>
                     <ToastProvider>
                       <RootNavigator />
+                      <PrivacyShieldOverlay />
                       <AppLockOverlay />
                       <ToastOverlay />
                       <NetworkStatusBanner />

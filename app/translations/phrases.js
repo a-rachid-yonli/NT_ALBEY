@@ -2,6 +2,17 @@
 // Dictionnaire complet de traduction automatique des textes UI (Français -> Anglais, Haoussa, Zarma)
 
 export const PHRASE_TRANSLATIONS = {
+  // --- SÉCURITÉ RENFORCÉE & PRIVACY SHIELD (FR / EN / HA / ZR) ---
+  "Protection des données confidentielles": { en: "Confidential data protection", ha: "Kariyar bayanan sirri", zr: "Asiri alhabarey saajaw" },
+  "Vos informations financières sont sécurisées": { en: "Your financial information is secure", ha: "Bayananku na kuɗi suna da kariya", zr: "War nooru alhabaroo ga saajaw" },
+  "🔒 Session Chiffrée • Niger Telecoms": { en: "🔒 Encrypted Session • Niger Telecoms", ha: "🔒 Zama Mai Kariya • Niger Telecoms", zr: "🔒 Zaari Kufal-kufal • Niger Telecoms" },
+  "🔀 Touches mélangées (Anti-espion)": { en: "🔀 Scrambled keys (Anti-spy)", ha: "🔀 Lambobi a gauraye (Hana leƙe)", zr: "🔀 Lambey daŋ-daŋ (Kala guna-guna)" },
+  "🔢 Ordre classique": { en: "🔢 Classic order", ha: "🔢 Jeri na al'ada", zr: "🔢 Alhaali jina" },
+  "Rappel de sécurité officiel": { en: "Official security reminder", ha: "Tuni na tsaro na hukuma", zr: "Saajaw lasaabu alhabar" },
+  "Niger Telecoms ne vous demandera JAMAIS de code secret ni d'avance de frais.": { en: "Niger Telecoms will NEVER ask you for a secret code or upfront fees.", ha: "Niger Telecoms ba zai TAƁA tambayar lambar sirri ko kuɗin gaba ba.", zr: "Niger Telecoms ŠI BAA war gaa kufal lamba wala nooru jine jine." },
+  "• Fausse loterie :": { en: "• Fake lottery:", ha: "• Caca ta ƙarya:", zr: "• Haya-foori taara:" },
+  "• Code PIN :": { en: "• PIN Code:", ha: "• Lambar PIN:", zr: "• PIN Lamba:" },
+  "• Vérification :": { en: "• Verification:", ha: "• Tantancewa:", zr: "• Tabbatandiyan:" },
   // --- NOUVELLES FONCTIONNALITÉS & VALUATIONS (FR / EN / HA / ZR) ---
   "Confirmation Vocale": { en: "Voice Confirmation", ha: "Tabbatarwa da Murya", zr: "Jinde Tabbatandiyan" },
   "Confirmation vocale": { en: "Voice confirmation", ha: "Tabbatarwa da murya", zr: "Jinde tabbatandiyan" },
